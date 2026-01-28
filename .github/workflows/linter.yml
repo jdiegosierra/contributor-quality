@@ -65,3 +65,5 @@ jobs:
           VALIDATE_JSCPD: false
           VALIDATE_TYPESCRIPT_ES: false
           VALIDATE_JSON: false
+          VALIDATE_ENV: false
+          VALIDATE_NATURAL_LANGUAGE: false

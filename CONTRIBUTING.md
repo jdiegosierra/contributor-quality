@@ -77,7 +77,7 @@ pnpm bundle
 
 ## Project Structure
 
-```
+```text
 contributor-quality/
 ├── src/
 │   ├── api/           # GitHub API client and rate limiting
