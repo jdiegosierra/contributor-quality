@@ -1,0 +1,28 @@
+name: Contributor Quality
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  evaluate-contributor:
+    name: Evaluate Contributor
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Evaluate Contributor Quality
+        uses: ./
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          minimum-score: 300
+          on-low-score: comment
+          dry-run: false
+          trusted-users: dependabot[bot],renovate[bot]
