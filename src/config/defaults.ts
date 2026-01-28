@@ -4,57 +4,102 @@
 
 import type {
   ContributorQualityConfig,
-  MetricWeights,
-  LowScoreAction,
+  MetricThresholds,
+  FailAction,
   NewAccountAction
 } from '../types/config.js'
 
-/** Default metric weights (must sum to 1.0) */
-export const DEFAULT_WEIGHTS: MetricWeights = {
-  prMergeRate: 0.2,
-  repoQuality: 0.15,
-  positiveReactions: 0.15,
-  negativeReactions: 0.1,
-  accountAge: 0.1,
-  activityConsistency: 0.1,
-  issueEngagement: 0.1,
-  codeReviews: 0.1
-}
+import {
+  DEFAULT_THRESHOLDS,
+  DEFAULT_REQUIRED_METRICS,
+  DEFAULT_TRUSTED_USERS
+} from '../types/config.js'
 
-/** Default trusted users (common bots) */
-export const DEFAULT_TRUSTED_USERS: string[] = [
-  'dependabot[bot]',
-  'renovate[bot]',
-  'github-actions[bot]',
-  'codecov[bot]',
-  'sonarcloud[bot]'
-]
+// Re-export for convenience
+export { DEFAULT_THRESHOLDS, DEFAULT_REQUIRED_METRICS, DEFAULT_TRUSTED_USERS }
 
 /** Default configuration values */
 export const DEFAULT_CONFIG: Omit<ContributorQualityConfig, 'githubToken'> = {
-  minimumScore: 300,
+  thresholds: DEFAULT_THRESHOLDS,
+  requiredMetrics: DEFAULT_REQUIRED_METRICS,
   minimumStars: 100,
   analysisWindowMonths: 12,
   trustedUsers: DEFAULT_TRUSTED_USERS,
   trustedOrgs: [],
-  onLowScore: 'comment' as LowScoreAction,
+  onFail: 'comment' as FailAction,
   labelName: 'needs-review',
-  weights: DEFAULT_WEIGHTS,
   dryRun: false,
   newAccountAction: 'neutral' as NewAccountAction,
   newAccountThresholdDays: 30
 }
 
-/** Validate that weights sum to approximately 1.0 */
-export function validateWeights(weights: MetricWeights): boolean {
-  const sum = Object.values(weights).reduce((a, b) => a + b, 0)
-  return Math.abs(sum - 1.0) < 0.01
+/** Validate threshold values */
+export function validateThresholds(thresholds: MetricThresholds): void {
+  if (thresholds.prMergeRate < 0 || thresholds.prMergeRate > 1) {
+    throw new Error(
+      `prMergeRate threshold must be between 0 and 1, got ${thresholds.prMergeRate}`
+    )
+  }
+
+  if (
+    thresholds.activityConsistency < 0 ||
+    thresholds.activityConsistency > 1
+  ) {
+    throw new Error(
+      `activityConsistency threshold must be between 0 and 1, got ${thresholds.activityConsistency}`
+    )
+  }
+
+  if (thresholds.accountAge < 0) {
+    throw new Error(
+      `accountAge threshold must be non-negative, got ${thresholds.accountAge}`
+    )
+  }
+
+  if (thresholds.negativeReactions < 0) {
+    throw new Error(
+      `negativeReactions threshold must be non-negative, got ${thresholds.negativeReactions}`
+    )
+  }
 }
 
-/** Merge custom weights with defaults */
-export function mergeWeights(custom: Partial<MetricWeights>): MetricWeights {
+/** Merge custom thresholds with defaults */
+export function mergeThresholds(
+  custom: Partial<MetricThresholds>
+): MetricThresholds {
   return {
-    ...DEFAULT_WEIGHTS,
+    ...DEFAULT_THRESHOLDS,
     ...custom
   }
+}
+
+/** Valid metric names for required-metrics validation */
+export const VALID_METRIC_NAMES = [
+  'prMergeRate',
+  'repoQuality',
+  'positiveReactions',
+  'negativeReactions',
+  'accountAge',
+  'activityConsistency',
+  'issueEngagement',
+  'codeReviews'
+] as const
+
+/** Validate required metrics list */
+export function validateRequiredMetrics(metrics: string[]): string[] {
+  const valid = metrics.filter((m) =>
+    VALID_METRIC_NAMES.includes(m as (typeof VALID_METRIC_NAMES)[number])
+  )
+  const invalid = metrics.filter(
+    (m) =>
+      !VALID_METRIC_NAMES.includes(m as (typeof VALID_METRIC_NAMES)[number])
+  )
+
+  if (invalid.length > 0) {
+    throw new Error(
+      `Invalid metric names in required-metrics: ${invalid.join(', ')}`
+    )
+  }
+
+  return valid
 }

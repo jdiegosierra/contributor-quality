@@ -3,9 +3,10 @@
  */
 
 export {
-  generateLowScoreComment,
+  generateAnalysisComment,
   generatePassedComment,
-  generateWhitelistComment
+  generateWhitelistComment,
+  COMMENT_MARKER
 } from './comment.js'
 
 export {

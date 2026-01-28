@@ -291,6 +291,50 @@ export class GitHubClient {
   }
 
   /**
+   * Update existing comment or create a new one
+   * Looks for comments containing the marker and updates the first one found
+   */
+  async upsertPRComment(
+    context: PRContext,
+    body: string,
+    marker: string
+  ): Promise<void> {
+    await executeWithRetry(async () => {
+      // Get existing comments
+      const { data: comments } = await this.octokit.rest.issues.listComments({
+        owner: context.owner,
+        repo: context.repo,
+        issue_number: context.prNumber
+      })
+
+      // Find existing comment with marker
+      const existingComment = comments.find((comment) =>
+        comment.body?.includes(marker)
+      )
+
+      if (existingComment) {
+        // Update existing comment
+        await this.octokit.rest.issues.updateComment({
+          owner: context.owner,
+          repo: context.repo,
+          comment_id: existingComment.id,
+          body
+        })
+        core.info('Updated existing quality check comment')
+      } else {
+        // Create new comment
+        await this.octokit.rest.issues.createComment({
+          owner: context.owner,
+          repo: context.repo,
+          issue_number: context.prNumber,
+          body
+        })
+        core.info('Created new quality check comment')
+      }
+    })
+  }
+
+  /**
    * Ensure a label exists, creating it if necessary
    */
   private async ensureLabelExists(

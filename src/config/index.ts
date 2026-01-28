@@ -5,8 +5,11 @@
 export { parseInputs } from './inputs.js'
 export {
   DEFAULT_CONFIG,
-  DEFAULT_WEIGHTS,
+  DEFAULT_THRESHOLDS,
+  DEFAULT_REQUIRED_METRICS,
   DEFAULT_TRUSTED_USERS,
-  validateWeights,
-  mergeWeights
+  VALID_METRIC_NAMES,
+  validateThresholds,
+  mergeThresholds,
+  validateRequiredMetrics
 } from './defaults.js'

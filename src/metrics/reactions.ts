@@ -6,7 +6,7 @@ import type {
   GraphQLContributorData,
   GitHubReactionContent
 } from '../types/github.js'
-import type { ReactionData, MetricResult } from '../types/metrics.js'
+import type { ReactionData, MetricCheckResult } from '../types/metrics.js'
 import { POSITIVE_REACTIONS, NEGATIVE_REACTIONS } from '../types/metrics.js'
 
 /**
@@ -57,124 +57,80 @@ export function extractReactionData(
 }
 
 /**
- * Calculate positive reactions metric score
+ * Check positive reactions against threshold
  *
- * Scoring:
- * - <5 total reactions = 50 (neutral, insufficient data)
- * - 80%+ positive = 100 points
- * - 60-80% positive = 75 points
- * - 40-60% positive = 50 points (neutral)
- * - <40% positive = below neutral
+ * @param data - Extracted reaction data
+ * @param threshold - Minimum positive reactions to pass
+ * @returns MetricCheckResult with pass/fail status
  */
-export function calculatePositiveReactionsMetric(
+export function checkPositiveReactions(
   data: ReactionData,
-  weight: number
-): MetricResult {
-  const totalReactions =
-    data.positiveReactions + data.negativeReactions + data.neutralReactions
+  threshold: number
+): MetricCheckResult {
+  const positiveCount = data.positiveReactions
+  const passed = positiveCount >= threshold
 
-  // Insufficient data
-  if (totalReactions < 5) {
-    return {
-      name: 'positiveReactions',
-      rawValue: data.positiveRatio,
-      normalizedScore: 50,
-      weightedScore: 50 * weight,
-      weight,
-      details: `Insufficient reaction data (${totalReactions} reactions)`,
-      dataPoints: totalReactions
-    }
-  }
-
-  let normalizedScore: number
   let details: string
 
-  const positiveRatio = data.positiveRatio
-
-  if (positiveRatio >= 0.8) {
-    normalizedScore = 100
-    details = `Excellent reception: ${(positiveRatio * 100).toFixed(0)}% positive reactions (${data.positiveReactions} positive)`
-  } else if (positiveRatio >= 0.6) {
-    normalizedScore = 75
-    details = `Good reception: ${(positiveRatio * 100).toFixed(0)}% positive reactions`
-  } else if (positiveRatio >= 0.4) {
-    normalizedScore = 50
-    details = `Mixed reception: ${(positiveRatio * 100).toFixed(0)}% positive reactions`
+  if (data.totalComments === 0) {
+    details = 'No comments found in analysis window'
+  } else if (positiveCount === 0) {
+    details = 'No positive reactions received'
   } else {
-    // Linear decrease from 50 to 0
-    normalizedScore = (positiveRatio / 0.4) * 50
-    details = `Poor reception: ${(positiveRatio * 100).toFixed(0)}% positive reactions`
+    details = `${positiveCount} positive reactions received`
+  }
+
+  if (threshold > 0) {
+    details += passed
+      ? ` (meets threshold >= ${threshold})`
+      : ` (below threshold >= ${threshold})`
   }
 
   return {
     name: 'positiveReactions',
-    rawValue: positiveRatio,
-    normalizedScore,
-    weightedScore: normalizedScore * weight,
-    weight,
+    rawValue: positiveCount,
+    threshold,
+    passed,
     details,
-    dataPoints: totalReactions
+    dataPoints: data.totalComments
   }
 }
 
 /**
- * Calculate negative reactions metric score (penalty metric)
+ * Check negative reactions against threshold (maximum allowed)
  *
- * Scoring:
- * - <5 total reactions = 50 (neutral)
- * - <10% negative = 50 (no penalty)
- * - 10-20% negative = 40 (slight penalty)
- * - 20-30% negative = 25 (moderate penalty)
- * - >30% negative = 0-25 (heavy penalty)
+ * @param data - Extracted reaction data
+ * @param threshold - Maximum negative reactions allowed to pass
+ * @returns MetricCheckResult with pass/fail status
  */
-export function calculateNegativeReactionsMetric(
+export function checkNegativeReactions(
   data: ReactionData,
-  weight: number
-): MetricResult {
-  const totalReactions =
-    data.positiveReactions + data.negativeReactions + data.neutralReactions
+  threshold: number
+): MetricCheckResult {
+  const negativeCount = data.negativeReactions
+  // For negative reactions, we pass if count is <= threshold (under the maximum)
+  const passed = negativeCount <= threshold
 
-  // Insufficient data
-  if (totalReactions < 5) {
-    return {
-      name: 'negativeReactions',
-      rawValue: 0,
-      normalizedScore: 50,
-      weightedScore: 50 * weight,
-      weight,
-      details: 'Insufficient reaction data for negative metric',
-      dataPoints: totalReactions
-    }
-  }
-
-  const negativeRatio =
-    totalReactions > 0 ? data.negativeReactions / totalReactions : 0
-
-  let normalizedScore: number
   let details: string
 
-  if (negativeRatio < 0.1) {
-    normalizedScore = 50 // No penalty
-    details = `Low negative reactions: ${(negativeRatio * 100).toFixed(0)}%`
-  } else if (negativeRatio < 0.2) {
-    normalizedScore = 40
-    details = `Some negative reactions: ${(negativeRatio * 100).toFixed(0)}% (${data.negativeReactions} negative)`
-  } else if (negativeRatio < 0.3) {
-    normalizedScore = 25
-    details = `Notable negative reactions: ${(negativeRatio * 100).toFixed(0)}% (${data.negativeReactions} negative)`
+  if (data.totalComments === 0) {
+    details = 'No comments found in analysis window'
+  } else if (negativeCount === 0) {
+    details = 'No negative reactions received'
   } else {
-    // Heavy penalty
-    normalizedScore = Math.max(0, 25 - (negativeRatio - 0.3) * 100)
-    details = `High negative reactions: ${(negativeRatio * 100).toFixed(0)}% (${data.negativeReactions} negative)`
+    details = `${negativeCount} negative reactions received`
   }
+
+  details += passed
+    ? ` (within limit <= ${threshold})`
+    : ` (exceeds limit <= ${threshold})`
 
   return {
     name: 'negativeReactions',
-    rawValue: negativeRatio,
-    normalizedScore,
-    weightedScore: normalizedScore * weight,
-    weight,
+    rawValue: negativeCount,
+    threshold,
+    passed,
     details,
-    dataPoints: totalReactions
+    dataPoints: data.totalComments
   }
 }

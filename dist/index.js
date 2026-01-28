@@ -31107,20 +31107,22 @@ function requireCore () {
 var coreExports = requireCore();
 
 /**
- * Default configuration values
+ * Configuration types for the contributor quality action
  */
-/** Default metric weights (must sum to 1.0) */
-const DEFAULT_WEIGHTS = {
-    prMergeRate: 0.2,
-    repoQuality: 0.15,
-    positiveReactions: 0.15,
-    negativeReactions: 0.1,
-    accountAge: 0.1,
-    activityConsistency: 0.1,
-    issueEngagement: 0.1,
-    codeReviews: 0.1
+/** Default metric thresholds */
+const DEFAULT_THRESHOLDS = {
+    prMergeRate: 0.3,
+    repoQuality: 0,
+    positiveReactions: 0,
+    negativeReactions: 10,
+    accountAge: 30,
+    activityConsistency: 0,
+    issueEngagement: 0,
+    codeReviews: 0
 };
-/** Default trusted users (common bots) */
+/** Default required metrics (must pass for check to pass) */
+const DEFAULT_REQUIRED_METRICS = ['prMergeRate', 'accountAge'];
+/** Default trusted bots */
 const DEFAULT_TRUSTED_USERS = [
     'dependabot[bot]',
     'renovate[bot]',
@@ -31128,28 +31130,64 @@ const DEFAULT_TRUSTED_USERS = [
     'codecov[bot]',
     'sonarcloud[bot]'
 ];
+
+/**
+ * Default configuration values
+ */
 /** Default configuration values */
 const DEFAULT_CONFIG = {
-    minimumScore: 300,
+    thresholds: DEFAULT_THRESHOLDS,
+    requiredMetrics: DEFAULT_REQUIRED_METRICS,
     minimumStars: 100,
     analysisWindowMonths: 12,
     trustedUsers: DEFAULT_TRUSTED_USERS,
-    onLowScore: 'comment',
+    onFail: 'comment',
     labelName: 'needs-review',
     newAccountAction: 'neutral',
     newAccountThresholdDays: 30
 };
-/** Validate that weights sum to approximately 1.0 */
-function validateWeights(weights) {
-    const sum = Object.values(weights).reduce((a, b) => a + b, 0);
-    return Math.abs(sum - 1.0) < 0.01;
+/** Validate threshold values */
+function validateThresholds(thresholds) {
+    if (thresholds.prMergeRate < 0 || thresholds.prMergeRate > 1) {
+        throw new Error(`prMergeRate threshold must be between 0 and 1, got ${thresholds.prMergeRate}`);
+    }
+    if (thresholds.activityConsistency < 0 ||
+        thresholds.activityConsistency > 1) {
+        throw new Error(`activityConsistency threshold must be between 0 and 1, got ${thresholds.activityConsistency}`);
+    }
+    if (thresholds.accountAge < 0) {
+        throw new Error(`accountAge threshold must be non-negative, got ${thresholds.accountAge}`);
+    }
+    if (thresholds.negativeReactions < 0) {
+        throw new Error(`negativeReactions threshold must be non-negative, got ${thresholds.negativeReactions}`);
+    }
 }
-/** Merge custom weights with defaults */
-function mergeWeights(custom) {
+/** Merge custom thresholds with defaults */
+function mergeThresholds(custom) {
     return {
-        ...DEFAULT_WEIGHTS,
+        ...DEFAULT_THRESHOLDS,
         ...custom
     };
+}
+/** Valid metric names for required-metrics validation */
+const VALID_METRIC_NAMES = [
+    'prMergeRate',
+    'repoQuality',
+    'positiveReactions',
+    'negativeReactions',
+    'accountAge',
+    'activityConsistency',
+    'issueEngagement',
+    'codeReviews'
+];
+/** Validate required metrics list */
+function validateRequiredMetrics(metrics) {
+    const valid = metrics.filter((m) => VALID_METRIC_NAMES.includes(m));
+    const invalid = metrics.filter((m) => !VALID_METRIC_NAMES.includes(m));
+    if (invalid.length > 0) {
+        throw new Error(`Invalid metric names in required-metrics: ${invalid.join(', ')}`);
+    }
+    return valid;
 }
 
 /**
@@ -31178,8 +31216,8 @@ function parseJSON(input, fallback) {
         return fallback;
     }
 }
-/** Validate low score action */
-function validateLowScoreAction(action) {
+/** Validate fail action */
+function validateFailAction(action) {
     const valid = [
         'comment',
         'label',
@@ -31190,7 +31228,7 @@ function validateLowScoreAction(action) {
     if (valid.includes(action)) {
         return action;
     }
-    coreExports.warning(`Invalid on-low-score value: ${action}. Using 'comment'.`);
+    coreExports.warning(`Invalid on-fail value: ${action}. Using 'comment'.`);
     return 'comment';
 }
 /** Validate new account action */
@@ -31213,12 +31251,21 @@ function parseIntSafe(value, name, defaultValue) {
     }
     return parsed;
 }
+/** Parse float with validation */
+function parseFloatSafe(value, name, defaultValue) {
+    if (!value || value.trim() === '') {
+        return defaultValue;
+    }
+    const parsed = parseFloat(value);
+    if (isNaN(parsed)) {
+        throw new Error(`Invalid ${name}: "${value}" is not a valid number`);
+    }
+    return parsed;
+}
 /** Validate the complete config object */
 function validateConfig(config) {
-    // Validate minimum score range
-    if (config.minimumScore < 0 || config.minimumScore > 1000) {
-        throw new Error(`minimum-score must be between 0 and 1000, got ${config.minimumScore}`);
-    }
+    // Validate thresholds
+    validateThresholds(config.thresholds);
     // Validate minimum stars is positive
     if (config.minimumStars < 0) {
         throw new Error(`minimum-stars must be a positive number, got ${config.minimumStars}`);
@@ -31231,11 +31278,37 @@ function validateConfig(config) {
     if (config.newAccountThresholdDays < 0) {
         throw new Error(`new-account-threshold-days must be a positive number, got ${config.newAccountThresholdDays}`);
     }
+    // Validate required metrics
+    validateRequiredMetrics(config.requiredMetrics);
 }
 /** Parse all action inputs into config object */
 function parseInputs() {
     const githubToken = coreExports.getInput('github-token', { required: true });
-    const minimumScore = parseIntSafe(coreExports.getInput('minimum-score'), 'minimum-score', DEFAULT_CONFIG.minimumScore);
+    // Parse thresholds - can be JSON or individual inputs
+    const thresholdsJson = coreExports.getInput('thresholds');
+    let customThresholds = {};
+    if (thresholdsJson) {
+        customThresholds = parseJSON(thresholdsJson, {});
+    }
+    // Individual threshold inputs override JSON
+    const prMergeRateInput = coreExports.getInput('threshold-pr-merge-rate');
+    if (prMergeRateInput) {
+        customThresholds.prMergeRate = parseFloatSafe(prMergeRateInput, 'threshold-pr-merge-rate', DEFAULT_CONFIG.thresholds.prMergeRate);
+    }
+    const accountAgeInput = coreExports.getInput('threshold-account-age');
+    if (accountAgeInput) {
+        customThresholds.accountAge = parseIntSafe(accountAgeInput, 'threshold-account-age', DEFAULT_CONFIG.thresholds.accountAge);
+    }
+    const negativeReactionsInput = coreExports.getInput('threshold-negative-reactions');
+    if (negativeReactionsInput) {
+        customThresholds.negativeReactions = parseIntSafe(negativeReactionsInput, 'threshold-negative-reactions', DEFAULT_CONFIG.thresholds.negativeReactions);
+    }
+    const thresholds = mergeThresholds(customThresholds);
+    // Parse required metrics
+    const requiredMetricsInput = coreExports.getInput('required-metrics');
+    const requiredMetrics = requiredMetricsInput !== undefined && requiredMetricsInput !== ''
+        ? parseList(requiredMetricsInput)
+        : DEFAULT_CONFIG.requiredMetrics;
     const minimumStars = parseIntSafe(coreExports.getInput('minimum-stars'), 'minimum-stars', DEFAULT_CONFIG.minimumStars);
     const analysisWindowMonths = parseIntSafe(coreExports.getInput('analysis-window'), 'analysis-window', DEFAULT_CONFIG.analysisWindowMonths);
     const trustedUsersInput = coreExports.getInput('trusted-users');
@@ -31243,26 +31316,21 @@ function parseInputs() {
         ? parseList(trustedUsersInput)
         : DEFAULT_CONFIG.trustedUsers;
     const trustedOrgs = parseList(coreExports.getInput('trusted-orgs'));
-    const onLowScore = validateLowScoreAction(coreExports.getInput('on-low-score') || DEFAULT_CONFIG.onLowScore);
+    const onFail = validateFailAction(coreExports.getInput('on-fail') || DEFAULT_CONFIG.onFail);
     const labelName = coreExports.getInput('label-name') || DEFAULT_CONFIG.labelName;
-    const customWeights = parseJSON(coreExports.getInput('weights'), {});
-    const weights = mergeWeights(customWeights);
-    if (!validateWeights(weights)) {
-        coreExports.warning('Metric weights do not sum to 1.0. Results may be skewed.');
-    }
     const dryRun = coreExports.getInput('dry-run').toLowerCase() === 'true';
     const newAccountAction = validateNewAccountAction(coreExports.getInput('new-account-action') || DEFAULT_CONFIG.newAccountAction);
     const newAccountThresholdDays = parseIntSafe(coreExports.getInput('new-account-threshold-days'), 'new-account-threshold-days', DEFAULT_CONFIG.newAccountThresholdDays);
     const config = {
         githubToken,
-        minimumScore,
+        thresholds,
+        requiredMetrics,
         minimumStars,
         analysisWindowMonths,
         trustedUsers,
         trustedOrgs,
-        onLowScore,
+        onFail,
         labelName,
-        weights,
         dryRun,
         newAccountAction,
         newAccountThresholdDays
@@ -35615,6 +35683,42 @@ class GitHubClient {
         });
     }
     /**
+     * Update existing comment or create a new one
+     * Looks for comments containing the marker and updates the first one found
+     */
+    async upsertPRComment(context, body, marker) {
+        await executeWithRetry(async () => {
+            // Get existing comments
+            const { data: comments } = await this.octokit.rest.issues.listComments({
+                owner: context.owner,
+                repo: context.repo,
+                issue_number: context.prNumber
+            });
+            // Find existing comment with marker
+            const existingComment = comments.find((comment) => comment.body?.includes(marker));
+            if (existingComment) {
+                // Update existing comment
+                await this.octokit.rest.issues.updateComment({
+                    owner: context.owner,
+                    repo: context.repo,
+                    comment_id: existingComment.id,
+                    body
+                });
+                coreExports.info('Updated existing quality check comment');
+            }
+            else {
+                // Create new comment
+                await this.octokit.rest.issues.createComment({
+                    owner: context.owner,
+                    repo: context.repo,
+                    issue_number: context.prNumber,
+                    body
+                });
+                coreExports.info('Created new quality check comment');
+            }
+        });
+    }
+    /**
      * Ensure a label exists, creating it if necessary
      */
     async ensureLabelExists(context, label) {
@@ -35689,20 +35793,10 @@ function getPRContext() {
 }
 
 /**
- * Scoring result types
+ * Analysis result types
  */
-/** Scoring constants */
-const SCORING_CONSTANTS = {
-    /** Baseline score for all users */
-    BASELINE_SCORE: 500,
-    /** Maximum possible score */
-    MAX_SCORE: 1000,
-    /** Minimum possible score */
-    MIN_SCORE: 0,
-    /** Minimum decay factor (for old/stale data) */
-    MIN_DECAY_FACTOR: 0.8,
-    /** Maximum decay factor (recent activity) */
-    MAX_DECAY_FACTOR: 1.0,
+/** Constants for analysis */
+const ANALYSIS_CONSTANTS = {
     /** Minimum contributions to have "sufficient data" */
     MIN_CONTRIBUTIONS_FOR_DATA: 5
 };
@@ -35744,55 +35838,41 @@ function extractPRHistoryData(data, sinceDate) {
     };
 }
 /**
- * Calculate PR history metric score
+ * Check PR merge rate against threshold
  *
- * Scoring:
- * - 90%+ merge rate = +100 points
- * - 70-90% = +50 to +100 (linear)
- * - 30-70% = 0 (neutral zone)
- * - <30% = -100 to 0 (linear penalty)
+ * @param data - Extracted PR history data
+ * @param threshold - Minimum merge rate (0-1) to pass
+ * @returns MetricCheckResult with pass/fail status
  */
-function calculatePRHistoryMetric(data, weight) {
-    // No data = neutral score
+function checkPRMergeRate(data, threshold) {
+    // No data = neutral (pass if threshold is 0)
     if (data.totalPRs === 0) {
         return {
             name: 'prMergeRate',
             rawValue: 0,
-            normalizedScore: 50, // Neutral
-            weightedScore: 50 * weight,
-            weight,
+            threshold,
+            passed: threshold === 0,
             details: 'No PR history found in analysis window',
             dataPoints: 0
         };
     }
-    let normalizedScore;
-    let details;
     const mergeRate = data.mergeRate;
-    if (mergeRate >= 0.9) {
-        normalizedScore = 100;
-        details = `Excellent merge rate: ${(mergeRate * 100).toFixed(1)}% (${data.mergedPRs}/${data.mergedPRs + data.closedWithoutMerge} PRs merged)`;
-    }
-    else if (mergeRate >= 0.7) {
-        // Linear interpolation from 50 to 100
-        normalizedScore = 50 + ((mergeRate - 0.7) / 0.2) * 50;
-        details = `Good merge rate: ${(mergeRate * 100).toFixed(1)}% (${data.mergedPRs}/${data.mergedPRs + data.closedWithoutMerge} PRs merged)`;
-    }
-    else if (mergeRate >= 0.3) {
-        // Neutral zone
-        normalizedScore = 50;
-        details = `Average merge rate: ${(mergeRate * 100).toFixed(1)}% (${data.mergedPRs}/${data.mergedPRs + data.closedWithoutMerge} PRs merged)`;
+    const passed = mergeRate >= threshold;
+    let details;
+    const mergeRatePercent = (mergeRate * 100).toFixed(1);
+    const thresholdPercent = (threshold * 100).toFixed(0);
+    const prInfo = `${data.mergedPRs}/${data.mergedPRs + data.closedWithoutMerge} PRs merged`;
+    if (passed) {
+        details = `Merge rate ${mergeRatePercent}% meets threshold (>= ${thresholdPercent}%). ${prInfo}`;
     }
     else {
-        // Linear penalty from 50 down to 0
-        normalizedScore = (mergeRate / 0.3) * 50;
-        details = `Low merge rate: ${(mergeRate * 100).toFixed(1)}% (${data.mergedPRs}/${data.mergedPRs + data.closedWithoutMerge} PRs merged)`;
+        details = `Merge rate ${mergeRatePercent}% below threshold (>= ${thresholdPercent}%). ${prInfo}`;
     }
     return {
         name: 'prMergeRate',
         rawValue: mergeRate,
-        normalizedScore,
-        weightedScore: normalizedScore * weight,
-        weight,
+        threshold,
+        passed,
         details,
         dataPoints: data.totalPRs
     };
@@ -35847,45 +35927,31 @@ function extractRepoQualityData(data, minimumStars, sinceDate) {
     };
 }
 /**
- * Calculate repository quality metric score
+ * Check repository quality against threshold
  *
- * Scoring (only positive - contributing to quality repos is good,
- * not contributing isn't necessarily bad):
- * - 10+ quality repos = 100 points
- * - 5-9 quality repos = 75 points
- * - 2-4 quality repos = 50 points
- * - 1 quality repo = 25 points
- * - 0 quality repos = 50 (neutral)
+ * @param data - Extracted repo quality data
+ * @param threshold - Minimum number of quality repos to pass
+ * @param minimumStars - Stars threshold used for "quality" classification
+ * @returns MetricCheckResult with pass/fail status
  */
-function calculateRepoQualityMetric(data, weight, minimumStars) {
+function checkRepoQuality(data, threshold, minimumStars) {
     const qualityCount = data.qualityRepoCount;
-    let normalizedScore;
+    const passed = qualityCount >= threshold;
     let details;
-    if (qualityCount === 0) {
-        if (data.contributedRepos.length === 0) {
-            normalizedScore = 50; // Neutral - no data
-            details = 'No merged PRs found in analysis window';
-        }
-        else {
-            normalizedScore = 50; // Neutral - has contributions but not to high-star repos
-            details = `Contributed to ${data.contributedRepos.length} repos, none with ${minimumStars}+ stars`;
-        }
+    if (data.contributedRepos.length === 0) {
+        details = 'No merged PRs found in analysis window';
     }
-    else if (qualityCount >= 10) {
-        normalizedScore = 100;
-        details = `Excellent: Merged PRs in ${qualityCount} repos with ${minimumStars}+ stars`;
-    }
-    else if (qualityCount >= 5) {
-        normalizedScore = 75;
-        details = `Good: Merged PRs in ${qualityCount} repos with ${minimumStars}+ stars`;
-    }
-    else if (qualityCount >= 2) {
-        normalizedScore = 65;
-        details = `Moderate: Merged PRs in ${qualityCount} repos with ${minimumStars}+ stars`;
+    else if (qualityCount === 0) {
+        details = `Contributed to ${data.contributedRepos.length} repos, none with ${minimumStars}+ stars`;
     }
     else {
-        normalizedScore = 55;
-        details = `Some quality contributions: Merged PR in ${qualityCount} repo with ${minimumStars}+ stars`;
+        details = `Merged PRs in ${qualityCount} repos with ${minimumStars}+ stars`;
+    }
+    if (passed && threshold > 0) {
+        details += ` (meets threshold >= ${threshold})`;
+    }
+    else if (!passed && threshold > 0) {
+        details += ` (below threshold >= ${threshold})`;
     }
     // Add info about highest star repo if notable
     if (data.highestStarRepo >= 1000) {
@@ -35894,9 +35960,8 @@ function calculateRepoQualityMetric(data, weight, minimumStars) {
     return {
         name: 'repoQuality',
         rawValue: qualityCount,
-        normalizedScore,
-        weightedScore: normalizedScore * weight,
-        weight,
+        threshold,
+        passed,
         details,
         dataPoints: data.contributedRepos.length
     };
@@ -35951,111 +36016,70 @@ function extractReactionData(data) {
     };
 }
 /**
- * Calculate positive reactions metric score
+ * Check positive reactions against threshold
  *
- * Scoring:
- * - <5 total reactions = 50 (neutral, insufficient data)
- * - 80%+ positive = 100 points
- * - 60-80% positive = 75 points
- * - 40-60% positive = 50 points (neutral)
- * - <40% positive = below neutral
+ * @param data - Extracted reaction data
+ * @param threshold - Minimum positive reactions to pass
+ * @returns MetricCheckResult with pass/fail status
  */
-function calculatePositiveReactionsMetric(data, weight) {
-    const totalReactions = data.positiveReactions + data.negativeReactions + data.neutralReactions;
-    // Insufficient data
-    if (totalReactions < 5) {
-        return {
-            name: 'positiveReactions',
-            rawValue: data.positiveRatio,
-            normalizedScore: 50,
-            weightedScore: 50 * weight,
-            weight,
-            details: `Insufficient reaction data (${totalReactions} reactions)`,
-            dataPoints: totalReactions
-        };
-    }
-    let normalizedScore;
+function checkPositiveReactions(data, threshold) {
+    const positiveCount = data.positiveReactions;
+    const passed = positiveCount >= threshold;
     let details;
-    const positiveRatio = data.positiveRatio;
-    if (positiveRatio >= 0.8) {
-        normalizedScore = 100;
-        details = `Excellent reception: ${(positiveRatio * 100).toFixed(0)}% positive reactions (${data.positiveReactions} positive)`;
+    if (data.totalComments === 0) {
+        details = 'No comments found in analysis window';
     }
-    else if (positiveRatio >= 0.6) {
-        normalizedScore = 75;
-        details = `Good reception: ${(positiveRatio * 100).toFixed(0)}% positive reactions`;
-    }
-    else if (positiveRatio >= 0.4) {
-        normalizedScore = 50;
-        details = `Mixed reception: ${(positiveRatio * 100).toFixed(0)}% positive reactions`;
+    else if (positiveCount === 0) {
+        details = 'No positive reactions received';
     }
     else {
-        // Linear decrease from 50 to 0
-        normalizedScore = (positiveRatio / 0.4) * 50;
-        details = `Poor reception: ${(positiveRatio * 100).toFixed(0)}% positive reactions`;
+        details = `${positiveCount} positive reactions received`;
+    }
+    if (threshold > 0) {
+        details += passed
+            ? ` (meets threshold >= ${threshold})`
+            : ` (below threshold >= ${threshold})`;
     }
     return {
         name: 'positiveReactions',
-        rawValue: positiveRatio,
-        normalizedScore,
-        weightedScore: normalizedScore * weight,
-        weight,
+        rawValue: positiveCount,
+        threshold,
+        passed,
         details,
-        dataPoints: totalReactions
+        dataPoints: data.totalComments
     };
 }
 /**
- * Calculate negative reactions metric score (penalty metric)
+ * Check negative reactions against threshold (maximum allowed)
  *
- * Scoring:
- * - <5 total reactions = 50 (neutral)
- * - <10% negative = 50 (no penalty)
- * - 10-20% negative = 40 (slight penalty)
- * - 20-30% negative = 25 (moderate penalty)
- * - >30% negative = 0-25 (heavy penalty)
+ * @param data - Extracted reaction data
+ * @param threshold - Maximum negative reactions allowed to pass
+ * @returns MetricCheckResult with pass/fail status
  */
-function calculateNegativeReactionsMetric(data, weight) {
-    const totalReactions = data.positiveReactions + data.negativeReactions + data.neutralReactions;
-    // Insufficient data
-    if (totalReactions < 5) {
-        return {
-            name: 'negativeReactions',
-            rawValue: 0,
-            normalizedScore: 50,
-            weightedScore: 50 * weight,
-            weight,
-            details: 'Insufficient reaction data for negative metric',
-            dataPoints: totalReactions
-        };
-    }
-    const negativeRatio = totalReactions > 0 ? data.negativeReactions / totalReactions : 0;
-    let normalizedScore;
+function checkNegativeReactions(data, threshold) {
+    const negativeCount = data.negativeReactions;
+    // For negative reactions, we pass if count is <= threshold (under the maximum)
+    const passed = negativeCount <= threshold;
     let details;
-    if (negativeRatio < 0.1) {
-        normalizedScore = 50; // No penalty
-        details = `Low negative reactions: ${(negativeRatio * 100).toFixed(0)}%`;
+    if (data.totalComments === 0) {
+        details = 'No comments found in analysis window';
     }
-    else if (negativeRatio < 0.2) {
-        normalizedScore = 40;
-        details = `Some negative reactions: ${(negativeRatio * 100).toFixed(0)}% (${data.negativeReactions} negative)`;
-    }
-    else if (negativeRatio < 0.3) {
-        normalizedScore = 25;
-        details = `Notable negative reactions: ${(negativeRatio * 100).toFixed(0)}% (${data.negativeReactions} negative)`;
+    else if (negativeCount === 0) {
+        details = 'No negative reactions received';
     }
     else {
-        // Heavy penalty
-        normalizedScore = Math.max(0, 25 - (negativeRatio - 0.3) * 100);
-        details = `High negative reactions: ${(negativeRatio * 100).toFixed(0)}% (${data.negativeReactions} negative)`;
+        details = `${negativeCount} negative reactions received`;
     }
+    details += passed
+        ? ` (within limit <= ${threshold})`
+        : ` (exceeds limit <= ${threshold})`;
     return {
         name: 'negativeReactions',
-        rawValue: negativeRatio,
-        normalizedScore,
-        weightedScore: normalizedScore * weight,
-        weight,
+        rawValue: negativeCount,
+        threshold,
+        passed,
         details,
-        dataPoints: totalReactions
+        dataPoints: data.totalComments
     };
 }
 
@@ -36094,99 +36118,69 @@ function extractAccountData(data, analysisWindowMonths) {
     };
 }
 /**
- * Calculate account age metric score
+ * Check account age against threshold
  *
- * Scoring (bonus for established accounts, no penalty for new):
- * - 365+ days = 100 points
- * - 180-365 days = 75 points
- * - 90-180 days = 60 points
- * - 30-90 days = 55 points
- * - <30 days = 50 points (neutral, not penalized)
+ * @param data - Extracted account data
+ * @param threshold - Minimum account age in days to pass
+ * @returns MetricCheckResult with pass/fail status
  */
-function calculateAccountAgeMetric(data, weight) {
-    let normalizedScore;
+function checkAccountAge(data, threshold) {
+    const ageInDays = data.ageInDays;
+    const passed = ageInDays >= threshold;
     let details;
-    if (data.ageInDays >= 365) {
-        normalizedScore = 100;
-        const years = Math.floor(data.ageInDays / 365);
-        details = `Established account: ${years}+ year${years > 1 ? 's' : ''} old`;
+    if (ageInDays >= 365) {
+        const years = Math.floor(ageInDays / 365);
+        details = `Account is ${years}+ year${years > 1 ? 's' : ''} old (${ageInDays} days)`;
     }
-    else if (data.ageInDays >= 180) {
-        normalizedScore = 75;
-        details = `Mature account: ${Math.floor(data.ageInDays / 30)} months old`;
-    }
-    else if (data.ageInDays >= 90) {
-        normalizedScore = 60;
-        details = `Account age: ${Math.floor(data.ageInDays / 30)} months old`;
-    }
-    else if (data.ageInDays >= 30) {
-        normalizedScore = 55;
-        details = `Recent account: ${data.ageInDays} days old`;
+    else if (ageInDays >= 30) {
+        details = `Account is ${Math.floor(ageInDays / 30)} months old (${ageInDays} days)`;
     }
     else {
-        normalizedScore = 50;
-        details = `New account: ${data.ageInDays} days old`;
+        details = `Account is ${ageInDays} days old`;
     }
+    details += passed
+        ? ` (meets threshold >= ${threshold} days)`
+        : ` (below threshold >= ${threshold} days)`;
     return {
         name: 'accountAge',
-        rawValue: data.ageInDays,
-        normalizedScore,
-        weightedScore: normalizedScore * weight,
-        weight,
+        rawValue: ageInDays,
+        threshold,
+        passed,
         details,
         dataPoints: 1
     };
 }
 /**
- * Calculate activity consistency metric score
+ * Check activity consistency against threshold
  *
- * Scoring:
- * - 12/12 months active = 100 points
- * - 9-11 months active = 85 points
- * - 6-8 months active = 70 points
- * - 3-5 months active = 55 points
- * - <3 months active = 50 points (neutral for new accounts)
+ * @param data - Extracted account data
+ * @param threshold - Minimum consistency score (0-1) to pass
+ * @returns MetricCheckResult with pass/fail status
  */
-function calculateActivityConsistencyMetric(data, weight) {
-    let normalizedScore;
-    let details;
+function checkActivityConsistency(data, threshold) {
+    const consistencyScore = data.consistencyScore;
+    const passed = consistencyScore >= threshold;
     const activeMonths = data.monthsWithActivity;
     const totalMonths = data.totalMonthsInWindow;
+    let details;
     // For accounts younger than analysis window, adjust expectations
     const effectiveMonths = Math.min(totalMonths, Math.ceil(data.ageInDays / 30));
     if (effectiveMonths === 0) {
-        normalizedScore = 50;
         details = 'Account too new to evaluate consistency';
     }
     else {
-        const ratio = activeMonths / effectiveMonths;
-        if (ratio >= 0.9) {
-            normalizedScore = 100;
-            details = `Very consistent: Active in ${activeMonths}/${effectiveMonths} months`;
-        }
-        else if (ratio >= 0.7) {
-            normalizedScore = 85;
-            details = `Consistent: Active in ${activeMonths}/${effectiveMonths} months`;
-        }
-        else if (ratio >= 0.5) {
-            normalizedScore = 70;
-            details = `Moderate consistency: Active in ${activeMonths}/${effectiveMonths} months`;
-        }
-        else if (ratio >= 0.25) {
-            normalizedScore = 55;
-            details = `Occasional activity: Active in ${activeMonths}/${effectiveMonths} months`;
-        }
-        else {
-            normalizedScore = 50;
-            details = `Sparse activity: Active in ${activeMonths}/${effectiveMonths} months`;
-        }
+        const percentage = (consistencyScore * 100).toFixed(0);
+        details = `Active in ${activeMonths}/${effectiveMonths} months (${percentage}% consistency)`;
     }
+    const thresholdPercent = (threshold * 100).toFixed(0);
+    details += passed
+        ? ` (meets threshold >= ${thresholdPercent}%)`
+        : ` (below threshold >= ${thresholdPercent}%)`;
     return {
         name: 'activityConsistency',
-        rawValue: data.consistencyScore,
-        normalizedScore,
-        weightedScore: normalizedScore * weight,
-        weight,
+        rawValue: consistencyScore,
+        threshold,
+        passed,
         details,
         dataPoints: activeMonths
     };
@@ -36221,63 +36215,40 @@ function extractIssueEngagementData(data, sinceDate) {
     };
 }
 /**
- * Calculate issue engagement metric score
+ * Check issue engagement against threshold
  *
- * Issues that receive engagement from others suggest quality contributions.
- *
- * Scoring:
- * - No issues = 50 (neutral)
- * - 70%+ engagement rate with 3+ issues = 100 points
- * - 50-70% engagement rate with 2+ issues = 75 points
- * - 30-50% engagement rate = 60 points
- * - <30% engagement rate = 50 points (neutral, not penalized)
+ * @param data - Extracted issue engagement data
+ * @param threshold - Minimum issues created to pass
+ * @returns MetricCheckResult with pass/fail status
  */
-function calculateIssueEngagementMetric(data, weight) {
-    // No issues = neutral
-    if (data.issuesCreated === 0) {
-        return {
-            name: 'issueEngagement',
-            rawValue: 0,
-            normalizedScore: 50,
-            weightedScore: 50 * weight,
-            weight,
-            details: 'No issues created in analysis window',
-            dataPoints: 0
-        };
-    }
-    // Calculate engagement rate (issues that got comments or reactions)
-    const engagedIssues = Math.max(data.issuesWithComments, data.issuesWithReactions);
-    const engagementRate = engagedIssues / data.issuesCreated;
-    let normalizedScore;
+function checkIssueEngagement(data, threshold) {
+    const issuesCreated = data.issuesCreated;
+    const passed = issuesCreated >= threshold;
     let details;
-    if (engagementRate >= 0.7 && data.issuesCreated >= 3) {
-        normalizedScore = 100;
-        details = `High engagement: ${engagedIssues}/${data.issuesCreated} issues received responses`;
-    }
-    else if (engagementRate >= 0.5 && data.issuesCreated >= 2) {
-        normalizedScore = 75;
-        details = `Good engagement: ${engagedIssues}/${data.issuesCreated} issues received responses`;
-    }
-    else if (engagementRate >= 0.3) {
-        normalizedScore = 60;
-        details = `Some engagement: ${engagedIssues}/${data.issuesCreated} issues received responses`;
+    if (issuesCreated === 0) {
+        details = 'No issues created in analysis window';
     }
     else {
-        normalizedScore = 50;
-        details = `Low engagement: ${engagedIssues}/${data.issuesCreated} issues received responses`;
+        // Calculate engagement rate (issues that got comments or reactions)
+        const engagedIssues = Math.max(data.issuesWithComments, data.issuesWithReactions);
+        details = `${issuesCreated} issues created, ${engagedIssues} received engagement`;
+        // Add average comments info if notable
+        if (data.averageCommentsPerIssue >= 3) {
+            details += `. Avg ${data.averageCommentsPerIssue.toFixed(1)} comments/issue`;
+        }
     }
-    // Add average comments info if notable
-    if (data.averageCommentsPerIssue >= 3) {
-        details += `. Avg ${data.averageCommentsPerIssue.toFixed(1)} comments/issue`;
+    if (threshold > 0) {
+        details += passed
+            ? ` (meets threshold >= ${threshold})`
+            : ` (below threshold >= ${threshold})`;
     }
     return {
         name: 'issueEngagement',
-        rawValue: engagementRate,
-        normalizedScore,
-        weightedScore: normalizedScore * weight,
-        weight,
+        rawValue: issuesCreated,
+        threshold,
+        passed,
         details,
-        dataPoints: data.issuesCreated
+        dataPoints: issuesCreated
     };
 }
 
@@ -36299,238 +36270,39 @@ function extractCodeReviewData(data) {
     };
 }
 /**
- * Calculate code review metric score
+ * Check code reviews against threshold
  *
- * Giving thoughtful code reviews is a strong positive signal of
- * community engagement and technical contribution.
- *
- * Scoring:
- * - 20+ reviews = 100 points
- * - 10-19 reviews = 80 points
- * - 5-9 reviews = 65 points
- * - 1-4 reviews = 55 points
- * - 0 reviews = 50 points (neutral)
+ * @param data - Extracted code review data
+ * @param threshold - Minimum reviews given to pass
+ * @returns MetricCheckResult with pass/fail status
  */
-function calculateCodeReviewMetric(data, weight) {
-    let normalizedScore;
+function checkCodeReviews(data, threshold) {
+    const reviewsGiven = data.reviewsGiven;
+    const passed = reviewsGiven >= threshold;
     let details;
-    const reviews = data.reviewsGiven;
-    if (reviews === 0) {
-        normalizedScore = 50;
+    if (reviewsGiven === 0) {
         details = 'No code reviews given in analysis window';
     }
-    else if (reviews >= 20) {
-        normalizedScore = 100;
-        details = `Excellent reviewer: ${reviews} code reviews given`;
-    }
-    else if (reviews >= 10) {
-        normalizedScore = 80;
-        details = `Active reviewer: ${reviews} code reviews given`;
-    }
-    else if (reviews >= 5) {
-        normalizedScore = 65;
-        details = `Some reviews: ${reviews} code reviews given`;
-    }
     else {
-        normalizedScore = 55;
-        details = `Few reviews: ${reviews} code reviews given`;
+        details = `${reviewsGiven} code reviews given`;
+    }
+    if (threshold > 0) {
+        details += passed
+            ? ` (meets threshold >= ${threshold})`
+            : ` (below threshold >= ${threshold})`;
     }
     return {
         name: 'codeReviews',
-        rawValue: reviews,
-        normalizedScore,
-        weightedScore: normalizedScore * weight,
-        weight,
+        rawValue: reviewsGiven,
+        threshold,
+        passed,
         details,
-        dataPoints: reviews
+        dataPoints: reviewsGiven
     };
 }
 
 /**
- * Spam pattern detection
- */
-/** Spam detection thresholds */
-const SPAM_THRESHOLDS = {
-    /** Percentage of very short PRs that triggers spam flag */
-    SHORT_PR_RATIO: 0.7,
-    /** Number of closed PRs that triggers burst flag */
-    BURST_CLOSED_COUNT: 10,
-    /** Merge rate below which burst closed is considered spam */
-    BURST_MERGE_RATE: 0.2,
-    /** Days threshold for new account spam */
-    NEW_ACCOUNT_DAYS: 7,
-    /** PR count that triggers new account spam */
-    NEW_ACCOUNT_PR_COUNT: 5
-};
-/**
- * Detect spam patterns and return penalties
- */
-function detectSpamPatterns(prHistory, account) {
-    const penalties = [];
-    // Check for very short PRs pattern
-    if (prHistory.totalPRs > 0) {
-        const shortPRRatio = prHistory.veryShortPRs / prHistory.totalPRs;
-        if (shortPRRatio >= SPAM_THRESHOLDS.SHORT_PR_RATIO) {
-            penalties.push({
-                type: 'short-prs',
-                penalty: Math.min(50 + (shortPRRatio - 0.7) * 100, 75),
-                reason: `${(shortPRRatio * 100).toFixed(0)}% of PRs have fewer than 10 lines changed`
-            });
-        }
-    }
-    // Check for burst of closed PRs
-    if (prHistory.closedWithoutMerge >= SPAM_THRESHOLDS.BURST_CLOSED_COUNT &&
-        prHistory.mergeRate < SPAM_THRESHOLDS.BURST_MERGE_RATE) {
-        penalties.push({
-            type: 'burst-closed',
-            penalty: Math.min(50 + prHistory.closedWithoutMerge * 2, 75),
-            reason: `${prHistory.closedWithoutMerge} PRs closed without merge (${(prHistory.mergeRate * 100).toFixed(0)}% merge rate)`
-        });
-    }
-    // Check for new account with high activity
-    if (account.ageInDays < SPAM_THRESHOLDS.NEW_ACCOUNT_DAYS &&
-        prHistory.totalPRs > SPAM_THRESHOLDS.NEW_ACCOUNT_PR_COUNT) {
-        penalties.push({
-            type: 'new-account-burst',
-            penalty: 30,
-            reason: `New account (${account.ageInDays} days) with ${prHistory.totalPRs} PRs`
-        });
-    }
-    return penalties;
-}
-/**
- * Calculate total spam penalty
- */
-function calculateSpamPenalty(penalties) {
-    const total = penalties.reduce((sum, p) => sum + p.penalty, 0);
-    // Cap at 150 points total
-    return Math.min(total, 150);
-}
-
-/**
- * Time-based decay calculations
- *
- * Activity decays toward baseline over time to:
- * - Give less weight to old activity
- * - Allow users to recover from past negative patterns
- * - Ensure recent behavior is most relevant
- */
-/** Months threshold for "recent" activity */
-const RECENT_ACTIVITY_MONTHS = 3;
-/**
- * Calculate decay factor based on activity recency
- *
- * Recent activity = less decay (factor closer to 1.0)
- * Old activity = more decay (factor closer to 0.8)
- *
- * This naturally moves scores toward baseline over time
- */
-function calculateDecayFactor(activityDates) {
-    if (activityDates.length === 0) {
-        // No activity = no decay (stay at baseline)
-        return SCORING_CONSTANTS.MAX_DECAY_FACTOR;
-    }
-    const now = new Date();
-    const recentThreshold = new Date(now);
-    recentThreshold.setMonth(recentThreshold.getMonth() - RECENT_ACTIVITY_MONTHS);
-    // Count recent vs total activity
-    const recentActivity = activityDates.filter((date) => date >= recentThreshold).length;
-    const totalActivity = activityDates.length;
-    // Calculate recency ratio
-    const recencyRatio = recentActivity / totalActivity;
-    // Linear interpolation between min and max decay factors
-    // 100% recent = 1.0 (no decay)
-    // 0% recent = 0.8 (20% decay toward baseline)
-    const decayRange = SCORING_CONSTANTS.MAX_DECAY_FACTOR - SCORING_CONSTANTS.MIN_DECAY_FACTOR;
-    const decayFactor = SCORING_CONSTANTS.MIN_DECAY_FACTOR + recencyRatio * decayRange;
-    return decayFactor;
-}
-/**
- * Apply decay to move a score toward baseline
- *
- * For scores above baseline: decay pulls down
- * For scores below baseline: decay pulls up
- *
- * This implements the "restoration" feature where
- * both positive and negative scores drift toward 500 over time
- */
-function applyDecayTowardBaseline(score, decayFactor) {
-    const baseline = SCORING_CONSTANTS.BASELINE_SCORE;
-    // Calculate distance from baseline
-    const distanceFromBaseline = score - baseline;
-    // Apply decay to the distance (not the raw score)
-    const decayedDistance = distanceFromBaseline * decayFactor;
-    // Return new score closer to baseline
-    return Math.round(baseline + decayedDistance);
-}
-
-/**
- * Score normalization utilities
- */
-/**
- * Normalize weighted metric sum to 0-1000 scale
- *
- * Input: sum of (normalizedScore * weight) values
- * - Each metric has normalizedScore 0-100
- * - Each metric has weight summing to 1.0
- * - So weighted sum ranges from 0 to 100
- *
- * Output: score on 0-1000 scale
- * - 50 average (neutral) -> 500 baseline
- * - 100 maximum -> 1000
- * - 0 minimum -> 0
- */
-function normalizeScore(weightedSum) {
-    // weightedSum is 0-100, convert to 0-1000
-    return Math.round(weightedSum * 10);
-}
-/**
- * Get score category for display
- */
-function getScoreCategory(score) {
-    if (score >= 800)
-        return 'excellent';
-    if (score >= 600)
-        return 'good';
-    if (score >= 400)
-        return 'average';
-    if (score >= 200)
-        return 'low';
-    return 'poor';
-}
-/**
- * Get category emoji for display
- */
-function getScoreEmoji(score) {
-    const category = getScoreCategory(score);
-    switch (category) {
-        case 'excellent':
-            return '🌟';
-        case 'good':
-            return '✅';
-        case 'average':
-            return '📊';
-        case 'low':
-            return '⚠️';
-        case 'poor':
-            return '🚨';
-    }
-}
-/**
- * Format score for display
- */
-function formatScore(score) {
-    return `${score}/1000`;
-}
-/**
- * Calculate percentage of maximum score
- */
-function scoreToPercentage(score) {
-    return Math.round((score / SCORING_CONSTANTS.MAX_SCORE) * 100);
-}
-
-/**
- * Main scoring engine that aggregates all metrics
+ * Main evaluation engine that checks all metrics against thresholds
  */
 /**
  * Extract all metrics data from GraphQL response
@@ -36546,103 +36318,104 @@ function extractAllMetrics(data, config, sinceDate) {
     };
 }
 /**
- * Calculate all metric scores
+ * Check all metrics against their thresholds
  */
-function calculateAllMetrics(metricsData, config) {
-    const weights = config.weights;
+function checkAllMetrics(metricsData, config) {
+    const thresholds = config.thresholds;
     return [
-        calculatePRHistoryMetric(metricsData.prHistory, weights.prMergeRate),
-        calculateRepoQualityMetric(metricsData.repoQuality, weights.repoQuality, config.minimumStars),
-        calculatePositiveReactionsMetric(metricsData.reactions, weights.positiveReactions),
-        calculateNegativeReactionsMetric(metricsData.reactions, weights.negativeReactions),
-        calculateAccountAgeMetric(metricsData.account, weights.accountAge),
-        calculateActivityConsistencyMetric(metricsData.account, weights.activityConsistency),
-        calculateIssueEngagementMetric(metricsData.issueEngagement, weights.issueEngagement),
-        calculateCodeReviewMetric(metricsData.codeReviews, weights.codeReviews)
+        checkPRMergeRate(metricsData.prHistory, thresholds.prMergeRate),
+        checkRepoQuality(metricsData.repoQuality, thresholds.repoQuality, config.minimumStars),
+        checkPositiveReactions(metricsData.reactions, thresholds.positiveReactions),
+        checkNegativeReactions(metricsData.reactions, thresholds.negativeReactions),
+        checkAccountAge(metricsData.account, thresholds.accountAge),
+        checkActivityConsistency(metricsData.account, thresholds.activityConsistency),
+        checkIssueEngagement(metricsData.issueEngagement, thresholds.issueEngagement),
+        checkCodeReviews(metricsData.codeReviews, thresholds.codeReviews)
     ];
 }
 /**
- * Generate recommendations based on scoring
+ * Determine if all required metrics passed
  */
-function generateRecommendations(metricsData, metrics, score) {
+function determinePassStatus(metrics, requiredMetrics) {
+    // If no required metrics specified, all must pass
+    if (requiredMetrics.length === 0) {
+        return metrics.every((m) => m.passed);
+    }
+    // Check only the required metrics
+    return requiredMetrics.every((requiredName) => {
+        const metric = metrics.find((m) => m.name === requiredName);
+        return metric ? metric.passed : true; // If metric not found, assume pass
+    });
+}
+/**
+ * Generate recommendations based on failed metrics
+ */
+function generateRecommendations(metricsData, metrics) {
     const recommendations = [];
-    // Low merge rate recommendation
-    const prMetric = metrics.find((m) => m.name === 'prMergeRate');
-    if (prMetric && prMetric.normalizedScore < 50) {
-        recommendations.push('Improve PR quality to increase merge rate. Focus on smaller, well-documented changes.');
+    const failedMetrics = metrics.filter((m) => !m.passed);
+    for (const metric of failedMetrics) {
+        switch (metric.name) {
+            case 'prMergeRate':
+                recommendations.push('Improve PR quality to increase merge rate. Focus on smaller, well-documented changes.');
+                break;
+            case 'repoQuality':
+                recommendations.push('Consider contributing to established open source projects with significant community adoption.');
+                break;
+            case 'codeReviews':
+                recommendations.push('Participate in code reviews to demonstrate engagement with the community.');
+                break;
+            case 'negativeReactions':
+                recommendations.push('Focus on constructive communication to improve community reception.');
+                break;
+            case 'accountAge':
+                recommendations.push('Continue building your contribution history. New accounts naturally have limited data.');
+                break;
+            case 'activityConsistency':
+                if (metricsData.account.ageInDays >= 90) {
+                    recommendations.push('Maintain consistent activity over time to build a stronger contribution profile.');
+                }
+                break;
+            case 'positiveReactions':
+                recommendations.push('Engage more with the community through helpful comments and discussions.');
+                break;
+            case 'issueEngagement':
+                recommendations.push('Create issues to report bugs or suggest features, and engage with the community.');
+                break;
+        }
     }
-    // No quality repo contributions
-    const repoMetric = metrics.find((m) => m.name === 'repoQuality');
-    if (repoMetric && metricsData.repoQuality.qualityRepoCount === 0) {
-        recommendations.push('Consider contributing to established open source projects with significant community adoption.');
-    }
-    // Low code review activity
-    const reviewMetric = metrics.find((m) => m.name === 'codeReviews');
-    if (reviewMetric && metricsData.codeReviews.reviewsGiven < 5) {
-        recommendations.push('Participate in code reviews to demonstrate engagement with the community.');
-    }
-    // Negative reactions
-    const negReactionMetric = metrics.find((m) => m.name === 'negativeReactions');
-    if (negReactionMetric && negReactionMetric.normalizedScore < 40) {
-        recommendations.push('Focus on constructive communication to improve community reception.');
-    }
-    // New account
-    if (metricsData.account.ageInDays < 30) {
-        recommendations.push('Continue building your contribution history. New accounts naturally have limited data.');
-    }
-    // Low activity consistency
-    const consistencyMetric = metrics.find((m) => m.name === 'activityConsistency');
-    if (consistencyMetric &&
-        consistencyMetric.normalizedScore < 60 &&
-        metricsData.account.ageInDays >= 90) {
-        recommendations.push('Maintain consistent activity over time to build a stronger contribution profile.');
-    }
-    // Overall low score
-    if (score < 300 && recommendations.length === 0) {
+    // General recommendation if no specific recommendations
+    if (recommendations.length === 0 && failedMetrics.length > 0) {
         recommendations.push('Build your GitHub profile through meaningful contributions, code reviews, and community engagement.');
     }
     return recommendations;
 }
 /**
- * Main scoring function
+ * Main evaluation function
  */
-function calculateScore(data, config, sinceDate) {
+function evaluateContributor(data, config, sinceDate) {
     const username = data.user.login;
     const now = new Date();
     // Extract all metrics data
     const metricsData = extractAllMetrics(data, config, sinceDate);
-    // Calculate individual metric scores
-    const metrics = calculateAllMetrics(metricsData, config);
-    // Detect spam patterns
-    const spamPatterns = detectSpamPatterns(metricsData.prHistory, metricsData.account);
-    const spamPenalty = calculateSpamPenalty(spamPatterns);
-    // Calculate decay factor based on activity recency
-    const decayFactor = calculateDecayFactor(metricsData.prHistory.mergedPRDates);
-    // Calculate weighted score
-    const weightedSum = metrics.reduce((sum, m) => sum + m.weightedScore, 0);
-    const rawScore = normalizeScore(weightedSum);
-    // Apply spam penalty first
-    const scoreAfterPenalty = rawScore - spamPenalty;
-    // Apply decay toward baseline (this moves score toward 500)
-    // Decay is applied to the distance from baseline, not the raw score
-    const decayedScore = applyDecayTowardBaseline(scoreAfterPenalty, decayFactor);
-    // Clamp to valid range
-    const finalScore = Math.max(SCORING_CONSTANTS.MIN_SCORE, Math.min(SCORING_CONSTANTS.MAX_SCORE, decayedScore));
-    // Determine pass/fail
-    const passed = finalScore >= config.minimumScore;
+    // Check all metrics against thresholds
+    const metrics = checkAllMetrics(metricsData, config);
+    // Determine pass/fail based on required metrics
+    const passed = determinePassStatus(metrics, config.requiredMetrics);
+    // Calculate counts
+    const passedCount = metrics.filter((m) => m.passed).length;
+    const failedMetrics = metrics.filter((m) => !m.passed).map((m) => m.name);
     // Check account status
     const accountIsNew = isNewAccount(metricsData.account, config.newAccountThresholdDays);
     const totalDataPoints = metrics.reduce((sum, m) => sum + m.dataPoints, 0);
-    const hasLimitedData = totalDataPoints < SCORING_CONSTANTS.MIN_CONTRIBUTIONS_FOR_DATA;
-    // Generate recommendations
-    const recommendations = generateRecommendations(metricsData, metrics, finalScore);
+    const hasLimitedData = totalDataPoints < ANALYSIS_CONSTANTS.MIN_CONTRIBUTIONS_FOR_DATA;
+    // Generate recommendations based on failed metrics
+    const recommendations = generateRecommendations(metricsData, metrics);
     return {
-        score: finalScore,
-        rawScore,
-        decayFactor,
         passed,
-        threshold: config.minimumScore,
+        passedCount,
+        totalMetrics: metrics.length,
         metrics,
+        failedMetrics,
         username,
         analyzedAt: now,
         dataWindowStart: sinceDate,
@@ -36659,18 +36432,20 @@ function calculateScore(data, config, sinceDate) {
 /**
  * PR comment generation
  */
+/** Unique marker to identify our comments for updates */
+const COMMENT_MARKER = '<!-- contributor-quality-check -->';
 /**
- * Generate PR comment for low score
+ * Generate PR comment with analysis results
  */
-function generateLowScoreComment(result, config) {
-    const emoji = getScoreEmoji(result.score);
-    const percentage = scoreToPercentage(result.score);
+function generateAnalysisComment(result, config) {
+    const statusEmoji = result.passed ? '✅' : '⚠️';
+    const statusText = result.passed ? 'Passed' : 'Needs Review';
     const lines = [
-        `## ${emoji} Contributor Quality Check`,
+        COMMENT_MARKER,
+        `## ${statusEmoji} Contributor Quality Check`,
         '',
-        `**Score:** ${formatScore(result.score)} (${percentage}%)`,
-        `**Status:** ${result.passed ? 'Passed' : 'Requires Review'}`,
-        `**Threshold:** ${config.minimumScore}`,
+        `**User:** @${result.username}`,
+        `**Status:** ${statusText} (${result.passedCount}/${result.totalMetrics} metrics passed)`,
         ''
     ];
     // Add note for new accounts
@@ -36682,21 +36457,23 @@ function generateLowScoreComment(result, config) {
     // Add note for limited data
     if (result.hasLimitedData && !result.isNewAccount) {
         lines.push('> **Note:** Limited contribution data available. ' +
-            'This may affect score accuracy.');
+            'Results may be affected.');
         lines.push('');
     }
-    // Score breakdown
-    lines.push('### Score Breakdown');
+    // Metric results table
+    lines.push('### Metric Results');
     lines.push('');
-    lines.push('| Metric | Score | Details |');
-    lines.push('|--------|-------|---------|');
+    lines.push('| Metric | Value | Threshold | Status |');
+    lines.push('|--------|-------|-----------|--------|');
     for (const metric of result.metrics) {
-        const scoreBar = generateScoreBar(metric.normalizedScore);
-        lines.push(`| ${formatMetricName(metric.name)} | ${scoreBar} | ${metric.details} |`);
+        const statusIcon = metric.passed ? '✅' : '❌';
+        const formattedValue = formatMetricValue(metric);
+        const formattedThreshold = formatThreshold(metric);
+        lines.push(`| ${formatMetricName(metric.name)} | ${formattedValue} | ${formattedThreshold} | ${statusIcon} |`);
     }
     lines.push('');
-    // Recommendations
-    if (result.recommendations.length > 0) {
+    // Recommendations (only if there are failed metrics)
+    if (result.recommendations.length > 0 && !result.passed) {
         lines.push('### Recommendations');
         lines.push('');
         for (const rec of result.recommendations) {
@@ -36706,24 +36483,56 @@ function generateLowScoreComment(result, config) {
     }
     // Footer
     lines.push('---');
-    lines.push(`<sub>This check evaluates contributor quality based on public GitHub activity. ` +
-        `[Learn more about scoring](https://github.com/jdiegosierra/contributor-quality#scoring-system)</sub>`);
+    lines.push(`<sub>Contributor Quality Check evaluates based on public GitHub activity. ` +
+        `Analysis period: ${result.dataWindowStart.toISOString().split('T')[0]} to ${result.dataWindowEnd.toISOString().split('T')[0]}</sub>`);
     return lines.join('\n');
 }
 /**
- * Generate visual score bar
+ * Generate PR comment for whitelisted user
  */
-function generateScoreBar(score) {
-    const filled = Math.round(score / 10);
-    const empty = 10 - filled;
-    let emoji;
-    if (score >= 70)
-        emoji = '🟢';
-    else if (score >= 50)
-        emoji = '🟡';
-    else
-        emoji = '🔴';
-    return `${emoji} ${'█'.repeat(filled)}${'░'.repeat(empty)} ${score}%`;
+function generateWhitelistComment(username) {
+    return [
+        COMMENT_MARKER,
+        '## ✅ Contributor Quality Check',
+        '',
+        `**User:** @${username}`,
+        `**Status:** Trusted contributor (whitelisted)`,
+        '',
+        'This user is on the trusted contributors list and was automatically approved.'
+    ].join('\n');
+}
+/**
+ * Format metric value for display
+ */
+function formatMetricValue(metric) {
+    switch (metric.name) {
+        case 'prMergeRate':
+        case 'activityConsistency':
+            return `${(metric.rawValue * 100).toFixed(0)}%`;
+        case 'accountAge':
+            return `${metric.rawValue} days`;
+        default:
+            return `${metric.rawValue}`;
+    }
+}
+/**
+ * Format threshold for display
+ */
+function formatThreshold(metric) {
+    // For negative reactions, it's a maximum (<=)
+    if (metric.name === 'negativeReactions') {
+        return `<= ${metric.threshold}`;
+    }
+    // For percentages
+    if (metric.name === 'prMergeRate' || metric.name === 'activityConsistency') {
+        return `>= ${(metric.threshold * 100).toFixed(0)}%`;
+    }
+    // For account age
+    if (metric.name === 'accountAge') {
+        return `>= ${metric.threshold} days`;
+    }
+    // Default (>=)
+    return `>= ${metric.threshold}`;
 }
 /**
  * Format metric name for display
@@ -36746,18 +36555,20 @@ function formatMetricName(name) {
  * Output formatting utilities
  */
 /**
- * Format scoring result for action outputs
+ * Format analysis result for action outputs
  */
 function formatActionOutput(result) {
     // Create breakdown object
     const breakdown = {
-        score: result.score,
-        rawScore: result.rawScore,
-        decayFactor: result.decayFactor,
+        passed: result.passed,
+        passedCount: result.passedCount,
+        totalMetrics: result.totalMetrics,
+        failedMetrics: result.failedMetrics,
         metrics: result.metrics.map((m) => ({
             name: m.name,
-            score: m.normalizedScore,
-            weight: m.weight,
+            rawValue: m.rawValue,
+            threshold: m.threshold,
+            passed: m.passed,
             details: m.details
         })),
         analysisWindow: {
@@ -36766,8 +36577,9 @@ function formatActionOutput(result) {
         }
     };
     return {
-        score: result.score,
         passed: result.passed,
+        passedCount: result.passedCount,
+        totalMetrics: result.totalMetrics,
         breakdown: JSON.stringify(breakdown),
         recommendations: JSON.stringify(result.recommendations),
         isNewAccount: result.isNewAccount,
@@ -36780,8 +36592,9 @@ function formatActionOutput(result) {
  */
 function setActionOutputs(result) {
     const output = formatActionOutput(result);
-    coreExports.setOutput('score', output.score);
     coreExports.setOutput('passed', output.passed);
+    coreExports.setOutput('passed-count', output.passedCount);
+    coreExports.setOutput('total-metrics', output.totalMetrics);
     coreExports.setOutput('breakdown', output.breakdown);
     coreExports.setOutput('recommendations', output.recommendations);
     coreExports.setOutput('is-new-account', output.isNewAccount);
@@ -36792,8 +36605,9 @@ function setActionOutputs(result) {
  * Set outputs for whitelisted user
  */
 function setWhitelistOutputs(username) {
-    coreExports.setOutput('score', 1000);
     coreExports.setOutput('passed', true);
+    coreExports.setOutput('passed-count', 8);
+    coreExports.setOutput('total-metrics', 8);
     coreExports.setOutput('breakdown', JSON.stringify({ whitelisted: true, username }));
     coreExports.setOutput('recommendations', JSON.stringify([]));
     coreExports.setOutput('is-new-account', false);
@@ -36801,7 +36615,7 @@ function setWhitelistOutputs(username) {
     coreExports.setOutput('was-whitelisted', true);
 }
 /**
- * Log scoring result summary
+ * Log analysis result summary
  */
 function logResultSummary(result) {
     coreExports.info('');
@@ -36809,27 +36623,25 @@ function logResultSummary(result) {
     coreExports.info('║         CONTRIBUTOR QUALITY ANALYSIS             ║');
     coreExports.info('╚══════════════════════════════════════════════════╝');
     coreExports.info('');
-    coreExports.info(`  Score:     ${result.score}/1000`);
-    coreExports.info(`  Status:    ${result.passed ? '✓ PASSED' : '✗ NEEDS REVIEW'}`);
-    coreExports.info(`  Threshold: ${result.threshold}`);
+    coreExports.info(`  User:      @${result.username}`);
+    coreExports.info(`  Status:    ${result.passed ? '✓ PASSED' : '✗ NEEDS REVIEW'} (${result.passedCount}/${result.totalMetrics} metrics)`);
     coreExports.info('');
-    coreExports.info('┌─────────────────────────────────────────────────────────────────────────────────┐');
-    coreExports.info('│ Metric               │ Score  │ Weight │ Contribution │ Details                │');
-    coreExports.info('├─────────────────────────────────────────────────────────────────────────────────┤');
-    let totalContribution = 0;
+    coreExports.info('┌──────────────────────────────────────────────────────────────────────────────────────┐');
+    coreExports.info('│ Metric               │ Value          │ Threshold      │ Status  │ Details          │');
+    coreExports.info('├──────────────────────────────────────────────────────────────────────────────────────┤');
     for (const metric of result.metrics) {
-        const contribution = (metric.normalizedScore * metric.weight) / 10;
-        totalContribution += contribution;
         const name = metric.name.padEnd(20);
-        const score = `${metric.normalizedScore}/100`.padEnd(6);
-        const weight = `${(metric.weight * 100).toFixed(0)}%`.padEnd(6);
-        const contrib = contribution.toFixed(1).padStart(5);
-        const details = (metric.details || '-').substring(0, 22).padEnd(22);
-        coreExports.info(`│ ${name} │ ${score} │ ${weight} │ ${contrib} pts    │ ${details} │`);
+        const value = formatValueForLog(metric).padEnd(14);
+        const threshold = formatThresholdForLog(metric).padEnd(14);
+        const status = metric.passed ? '✓ Pass ' : '✗ Fail ';
+        const details = (metric.details || '-').substring(0, 16).padEnd(16);
+        coreExports.info(`│ ${name} │ ${value} │ ${threshold} │ ${status} │ ${details} │`);
     }
-    coreExports.info('├─────────────────────────────────────────────────────────────────────────────────┤');
-    coreExports.info(`│ TOTAL                │        │  100%  │ ${totalContribution.toFixed(1).padStart(5)} pts    │ × 10 = ${result.score} score     │`);
-    coreExports.info('└─────────────────────────────────────────────────────────────────────────────────┘');
+    coreExports.info('└──────────────────────────────────────────────────────────────────────────────────────┘');
+    if (result.failedMetrics.length > 0) {
+        coreExports.info('');
+        coreExports.info(`Failed metrics: ${result.failedMetrics.join(', ')}`);
+    }
     if (result.recommendations.length > 0) {
         coreExports.info('');
         coreExports.info('Recommendations:');
@@ -36838,13 +36650,13 @@ function logResultSummary(result) {
         }
     }
     coreExports.info('');
-    coreExports.info(`Analysis: ${result.dataWindowStart.toISOString().split('T')[0]} to ${result.dataWindowEnd.toISOString().split('T')[0]} | Data points: ${result.totalDataPoints} | Decay: ${(result.decayFactor * 100).toFixed(0)}%`);
+    coreExports.info(`Analysis: ${result.dataWindowStart.toISOString().split('T')[0]} to ${result.dataWindowEnd.toISOString().split('T')[0]} | Data points: ${result.totalDataPoints}`);
     coreExports.info('');
 }
 /**
- * Write scoring result to GitHub Job Summary
+ * Write analysis result to GitHub Job Summary
  */
-async function writeJobSummary(result, username) {
+async function writeJobSummary(result) {
     const statusEmoji = result.passed ? '✅' : '⚠️';
     const statusText = result.passed ? 'Passed' : 'Needs Review';
     await coreExports.summary
@@ -36852,35 +36664,32 @@ async function writeJobSummary(result, username) {
         .addTable([
         [
             { data: 'Contributor', header: true },
-            { data: 'Score', header: true },
             { data: 'Status', header: true },
-            { data: 'Threshold', header: true }
+            { data: 'Metrics Passed', header: true }
         ],
         [
-            `@${username}`,
-            `**${result.score}**/1000`,
+            `@${result.username}`,
             `${statusEmoji} ${statusText}`,
-            `${result.threshold}`
+            `${result.passedCount}/${result.totalMetrics}`
         ]
     ])
-        .addHeading('Metric Breakdown', 3)
+        .addHeading('Metric Results', 3)
         .addTable([
         [
             { data: 'Metric', header: true },
-            { data: 'Score', header: true },
-            { data: 'Weight', header: true },
-            { data: 'Details', header: true }
+            { data: 'Value', header: true },
+            { data: 'Threshold', header: true },
+            { data: 'Status', header: true }
         ],
         ...result.metrics.map((m) => [
             m.name,
-            `${m.normalizedScore}/100`,
-            `${(m.weight * 100).toFixed(0)}%`,
-            m.details || '-'
+            formatValueForLog(m),
+            formatThresholdForLog(m),
+            m.passed ? '✅ Pass' : '❌ Fail'
         ])
     ])
         .addRaw(`\n**Analysis Period:** ${result.dataWindowStart.toISOString().split('T')[0]} to ${result.dataWindowEnd.toISOString().split('T')[0]}\n`)
         .addRaw(`**Data Points:** ${result.totalDataPoints}\n`)
-        .addRaw(`**Activity Decay Factor:** ${(result.decayFactor * 100).toFixed(0)}%\n`)
         .write();
     if (result.recommendations.length > 0) {
         await coreExports.summary
@@ -36897,6 +36706,35 @@ async function writeWhitelistSummary(username) {
         .addHeading('Contributor Quality Analysis', 2)
         .addRaw(`✅ **@${username}** is a trusted contributor and was automatically approved.\n`)
         .write();
+}
+/**
+ * Format metric value for log display
+ */
+function formatValueForLog(metric) {
+    switch (metric.name) {
+        case 'prMergeRate':
+        case 'activityConsistency':
+            return `${(metric.rawValue * 100).toFixed(0)}%`;
+        case 'accountAge':
+            return `${metric.rawValue} days`;
+        default:
+            return `${metric.rawValue}`;
+    }
+}
+/**
+ * Format threshold for log display
+ */
+function formatThresholdForLog(metric) {
+    if (metric.name === 'negativeReactions') {
+        return `<= ${metric.threshold}`;
+    }
+    if (metric.name === 'prMergeRate' || metric.name === 'activityConsistency') {
+        return `>= ${(metric.threshold * 100).toFixed(0)}%`;
+    }
+    if (metric.name === 'accountAge') {
+        return `>= ${metric.threshold} days`;
+    }
+    return `>= ${metric.threshold}`;
 }
 
 /**
@@ -36917,19 +36755,20 @@ async function run() {
         }
         const username = prContext.prAuthor;
         coreExports.info(`Analyzing contributor: ${username}`);
+        // Initialize GitHub client
+        const client = new GitHubClient(config.githubToken);
         // Check if user is in whitelist
         if (config.trustedUsers.includes(username)) {
             coreExports.info(`User ${username} is in trusted users list, skipping analysis`);
             setWhitelistOutputs(username);
             await writeWhitelistSummary(username);
-            if (!config.dryRun && config.onLowScore !== 'none') {
-                // Optionally comment about whitelist status
-                coreExports.debug('User is whitelisted, no comment needed');
+            // Always comment (upsert)
+            if (!config.dryRun) {
+                const comment = generateWhitelistComment(username);
+                await client.upsertPRComment(prContext, comment, COMMENT_MARKER);
             }
             return;
         }
-        // Initialize GitHub client
-        const client = new GitHubClient(config.githubToken);
         // Check organization membership
         if (config.trustedOrgs.length > 0) {
             const isMember = await client.checkOrgMembership(username, config.trustedOrgs);
@@ -36937,6 +36776,11 @@ async function run() {
                 coreExports.info(`User ${username} is member of a trusted organization, skipping analysis`);
                 setWhitelistOutputs(username);
                 await writeWhitelistSummary(username);
+                // Always comment (upsert)
+                if (!config.dryRun) {
+                    const comment = generateWhitelistComment(username);
+                    await client.upsertPRComment(prContext, comment, COMMENT_MARKER);
+                }
                 return;
             }
         }
@@ -36947,23 +36791,31 @@ async function run() {
         // Fetch contributor data
         coreExports.info(`Fetching contributor data from ${sinceDate.toISOString().split('T')[0]} to now`);
         const contributorData = await client.fetchContributorData(username, sinceDate);
-        // Calculate score
-        coreExports.info('Calculating contributor quality score...');
-        const result = calculateScore(contributorData, config, sinceDate);
+        // Evaluate contributor against thresholds
+        coreExports.info('Evaluating contributor metrics...');
+        const result = evaluateContributor(contributorData, config, sinceDate);
         // Log results
         logResultSummary(result);
         // Write Job Summary
-        await writeJobSummary(result, username);
+        await writeJobSummary(result);
         // Set outputs
         setActionOutputs(result);
+        // Always post/update comment with results
+        if (!config.dryRun) {
+            const comment = generateAnalysisComment(result, config);
+            await client.upsertPRComment(prContext, comment, COMMENT_MARKER);
+        }
+        else {
+            coreExports.info('[DRY RUN] Would post/update comment');
+        }
         // Handle new account action
         if (result.isNewAccount && config.newAccountAction !== 'neutral') {
             await handleNewAccount(result, config, client, prContext);
             return;
         }
-        // Handle score-based actions
+        // Handle failed check based on configuration
         if (!result.passed) {
-            await handleLowScore(result, config, client, prContext);
+            await handleFailedCheck(result, config, client, prContext);
         }
     }
     catch (error) {
@@ -36997,21 +36849,13 @@ async function handleNewAccount(result, config, client, prContext) {
     }
 }
 /**
- * Handle low score based on configuration
+ * Handle failed check based on configuration
  */
-async function handleLowScore(result, config, client, prContext) {
-    coreExports.warning(`Contributor score (${result.score}) is below threshold (${config.minimumScore})`);
-    const comment = generateLowScoreComment(result, config);
-    switch (config.onLowScore) {
+async function handleFailedCheck(result, config, client, prContext) {
+    coreExports.warning(`Contributor check failed: ${result.failedMetrics.length} required metrics not met`);
+    switch (config.onFail) {
         case 'comment':
-            if (!config.dryRun) {
-                await client.addPRComment(prContext, comment);
-                coreExports.info('Posted quality check comment');
-            }
-            else {
-                coreExports.info('[DRY RUN] Would post comment:');
-                coreExports.info(comment);
-            }
+            // Comment already handled above (always comment)
             break;
         case 'label':
             if (!config.dryRun) {
@@ -37023,21 +36867,21 @@ async function handleLowScore(result, config, client, prContext) {
             }
             break;
         case 'comment-and-label':
+            // Comment already handled above
             if (!config.dryRun) {
-                await client.addPRComment(prContext, comment);
                 await client.addPRLabel(prContext, config.labelName);
-                coreExports.info(`Posted comment and added label "${config.labelName}"`);
+                coreExports.info(`Added label "${config.labelName}"`);
             }
             else {
-                coreExports.info('[DRY RUN] Would post comment and add label');
+                coreExports.info(`[DRY RUN] Would add label`);
             }
             break;
         case 'fail':
-            coreExports.setFailed(`Contributor quality score (${result.score}) is below minimum threshold (${config.minimumScore})`);
+            coreExports.setFailed(`Contributor quality check failed: ${result.failedMetrics.join(', ')} did not meet thresholds`);
             break;
         case 'none':
         default:
-            coreExports.info('Low score action set to "none", no action taken');
+            coreExports.info('Failed check action set to "none", no additional action taken');
             break;
     }
 }

@@ -112,7 +112,8 @@ export const qualityContributorResponse: GraphQLContributorData = {
           comments: { totalCount: 3 },
           reactions: { totalCount: 2 }
         }
-      ]
+      ],
+      pageInfo: { hasNextPage: false, endCursor: null }
     },
     contributionsCollection: {
       contributionCalendar: {
@@ -139,7 +140,8 @@ export const qualityContributorResponse: GraphQLContributorData = {
         reactions: {
           nodes: [{ content: '+1' as const }, { content: 'heart' as const }]
         }
-      }))
+      })),
+      pageInfo: { hasNextPage: false, endCursor: null }
     }
   }
 }
@@ -175,7 +177,8 @@ export const spamContributorResponse: GraphQLContributorData = {
     },
     issues: {
       totalCount: 0,
-      nodes: []
+      nodes: [],
+      pageInfo: { hasNextPage: false, endCursor: null }
     },
     contributionsCollection: {
       contributionCalendar: {
@@ -202,7 +205,8 @@ export const spamContributorResponse: GraphQLContributorData = {
         reactions: {
           nodes: [{ content: '-1' as const }, { content: 'confused' as const }]
         }
-      }))
+      })),
+      pageInfo: { hasNextPage: false, endCursor: null }
     }
   }
 }
@@ -222,7 +226,8 @@ export const newUserResponse: GraphQLContributorData = {
     },
     issues: {
       totalCount: 0,
-      nodes: []
+      nodes: [],
+      pageInfo: { hasNextPage: false, endCursor: null }
     },
     contributionsCollection: {
       contributionCalendar: {
@@ -235,7 +240,8 @@ export const newUserResponse: GraphQLContributorData = {
     },
     issueComments: {
       totalCount: 0,
-      nodes: []
+      nodes: [],
+      pageInfo: { hasNextPage: false, endCursor: null }
     }
   }
 }

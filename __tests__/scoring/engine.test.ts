@@ -1,19 +1,28 @@
 /**
- * Tests for the main scoring engine
+ * Tests for the main evaluation engine
  */
 import { describe, it, expect } from '@jest/globals'
 import {
   extractAllMetrics,
-  calculateAllMetrics,
-  calculateBreakdown,
+  checkAllMetrics,
+  determinePassStatus,
   generateRecommendations
 } from '../../src/scoring/engine.js'
 import { DEFAULT_CONFIG } from '../../src/config/defaults.js'
 import type { GraphQLContributorData } from '../../src/types/github.js'
-import type { AllMetricsData, MetricResult } from '../../src/types/metrics.js'
+import type {
+  AllMetricsData,
+  MetricCheckResult
+} from '../../src/types/metrics.js'
 
-describe('Scoring Engine', () => {
+describe('Evaluation Engine', () => {
   const sinceDate = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)
+
+  // Create a test config with all fields
+  const testConfig = {
+    ...DEFAULT_CONFIG,
+    githubToken: 'test-token'
+  }
 
   describe('extractAllMetrics', () => {
     it('extracts all metric data from GraphQL response', () => {
@@ -51,7 +60,8 @@ describe('Scoring Engine', () => {
                 comments: { totalCount: 3 },
                 reactions: { totalCount: 5 }
               }
-            ]
+            ],
+            pageInfo: { hasNextPage: false, endCursor: null }
           },
           contributionsCollection: {
             contributionCalendar: {
@@ -71,12 +81,13 @@ describe('Scoring Engine', () => {
             nodes: [
               { reactions: { nodes: [{ content: '+1' }] } },
               { reactions: { nodes: [{ content: 'heart' }] } }
-            ]
+            ],
+            pageInfo: { hasNextPage: false, endCursor: null }
           }
         }
       }
 
-      const result = extractAllMetrics(data, DEFAULT_CONFIG, sinceDate)
+      const result = extractAllMetrics(data, testConfig, sinceDate)
 
       expect(result.prHistory).toBeDefined()
       expect(result.repoQuality).toBeDefined()
@@ -87,8 +98,8 @@ describe('Scoring Engine', () => {
     })
   })
 
-  describe('calculateAllMetrics', () => {
-    it('calculates all metric scores', () => {
+  describe('checkAllMetrics', () => {
+    it('checks all metrics against thresholds', () => {
       const metricsData: AllMetricsData = {
         prHistory: {
           totalPRs: 10,
@@ -135,68 +146,102 @@ describe('Scoring Engine', () => {
         }
       }
 
-      const results = calculateAllMetrics(metricsData, DEFAULT_CONFIG)
+      const results = checkAllMetrics(metricsData, testConfig)
 
       expect(results.length).toBe(8) // 8 metrics
-      expect(results.every((r) => r.normalizedScore >= 0)).toBe(true)
-      expect(results.every((r) => r.normalizedScore <= 100)).toBe(true)
+      expect(results.every((r) => typeof r.passed === 'boolean')).toBe(true)
+      expect(results.every((r) => typeof r.rawValue === 'number')).toBe(true)
+      expect(results.every((r) => typeof r.threshold === 'number')).toBe(true)
     })
   })
 
-  describe('calculateBreakdown', () => {
-    it('calculates positive and negative adjustments', () => {
-      const metrics: MetricResult[] = [
-        {
-          name: 'prMergeRate',
-          rawValue: 0.9,
-          normalizedScore: 100,
-          weightedScore: 20,
-          weight: 0.2,
-          details: 'Excellent merge rate',
-          dataPoints: 10
-        },
-        {
-          name: 'negativeReactions',
-          rawValue: 0.3,
-          normalizedScore: 25,
-          weightedScore: 2.5,
-          weight: 0.1,
-          details: 'High negative reactions',
-          dataPoints: 20
-        }
-      ]
-
-      const breakdown = calculateBreakdown(metrics, 0)
-
-      expect(breakdown.positiveAdjustments.length).toBe(1)
-      expect(breakdown.positiveAdjustments[0].metric).toBe('prMergeRate')
-
-      expect(breakdown.negativeAdjustments.length).toBe(1)
-      expect(breakdown.negativeAdjustments[0].metric).toBe('negativeReactions')
-    })
-
-    it('includes spam penalties in breakdown', () => {
-      const metrics: MetricResult[] = [
+  describe('determinePassStatus', () => {
+    it('passes when all required metrics pass', () => {
+      const metrics: MetricCheckResult[] = [
         {
           name: 'prMergeRate',
           rawValue: 0.5,
-          normalizedScore: 50,
-          weightedScore: 10,
-          weight: 0.2,
-          details: 'Average merge rate',
+          threshold: 0.3,
+          passed: true,
+          details: 'Good',
           dataPoints: 10
+        },
+        {
+          name: 'accountAge',
+          rawValue: 100,
+          threshold: 30,
+          passed: true,
+          details: 'Good',
+          dataPoints: 1
+        },
+        {
+          name: 'codeReviews',
+          rawValue: 0,
+          threshold: 5,
+          passed: false,
+          details: 'Low',
+          dataPoints: 0
         }
       ]
 
-      const breakdown = calculateBreakdown(metrics, 75)
+      const passed = determinePassStatus(metrics, ['prMergeRate', 'accountAge'])
 
-      expect(breakdown.spamPenalties.length).toBe(1)
-      expect(breakdown.spamPenalties[0].points).toBe(75)
+      expect(passed).toBe(true)
+    })
+
+    it('fails when a required metric fails', () => {
+      const metrics: MetricCheckResult[] = [
+        {
+          name: 'prMergeRate',
+          rawValue: 0.2,
+          threshold: 0.3,
+          passed: false,
+          details: 'Low',
+          dataPoints: 10
+        },
+        {
+          name: 'accountAge',
+          rawValue: 100,
+          threshold: 30,
+          passed: true,
+          details: 'Good',
+          dataPoints: 1
+        }
+      ]
+
+      const passed = determinePassStatus(metrics, ['prMergeRate', 'accountAge'])
+
+      expect(passed).toBe(false)
+    })
+
+    it('requires all metrics to pass when requiredMetrics is empty', () => {
+      const metrics: MetricCheckResult[] = [
+        {
+          name: 'prMergeRate',
+          rawValue: 0.5,
+          threshold: 0.3,
+          passed: true,
+          details: 'Good',
+          dataPoints: 10
+        },
+        {
+          name: 'accountAge',
+          rawValue: 10,
+          threshold: 30,
+          passed: false,
+          details: 'New',
+          dataPoints: 1
+        }
+      ]
+
+      const passed = determinePassStatus(metrics, [])
+
+      expect(passed).toBe(false)
     })
   })
 
   describe('generateRecommendations', () => {
-    it('recommends improving PR quality for low merge rate', () => {
+    it('recommends improving PR quality for failed prMergeRate', () => {
       const metricsData: AllMetricsData = {
         prHistory: {
           totalPRs: 10,
@@ -241,26 +286,25 @@ describe('Scoring Engine', () => {
         }
       }
 
-      const metrics: MetricResult[] = [
+      const metrics: MetricCheckResult[] = [
         {
           name: 'prMergeRate',
           rawValue: 0.2,
-          normalizedScore: 30,
-          weightedScore: 6,
-          weight: 0.2,
+          threshold: 0.3,
+          passed: false,
           details: 'Low merge rate',
           dataPoints: 10
         }
       ]
 
-      const recommendations = generateRecommendations(metricsData, metrics, 300)
+      const recommendations = generateRecommendations(metricsData, metrics)
 
       expect(
         recommendations.some((r) => r.toLowerCase().includes('pr quality'))
       ).toBe(true)
     })
 
-    it('recommends contributing to quality repos', () => {
+    it('recommends contributing to quality repos for failed repoQuality', () => {
       const metricsData: AllMetricsData = {
         prHistory: {
           totalPRs: 5,
@@ -307,26 +351,25 @@ describe('Scoring Engine', () => {
         }
       }
 
-      const metrics: MetricResult[] = [
+      const metrics: MetricCheckResult[] = [
         {
           name: 'repoQuality',
           rawValue: 0,
-          normalizedScore: 50,
-          weightedScore: 7.5,
-          weight: 0.15,
+          threshold: 1,
+          passed: false,
           details: 'No quality repos',
           dataPoints: 1
         }
       ]
 
-      const recommendations = generateRecommendations(metricsData, metrics, 450)
+      const recommendations = generateRecommendations(metricsData, metrics)
 
       expect(
         recommendations.some((r) => r.toLowerCase().includes('established'))
       ).toBe(true)
     })
 
-    it('recommends code reviews for low review count', () => {
+    it('recommends code reviews for failed codeReviews metric', () => {
       const metricsData: AllMetricsData = {
         prHistory: {
           totalPRs: 10,
@@ -371,26 +414,25 @@ describe('Scoring Engine', () => {
         }
       }
 
-      const metrics: MetricResult[] = [
+      const metrics: MetricCheckResult[] = [
         {
           name: 'codeReviews',
           rawValue: 2,
-          normalizedScore: 55,
-          weightedScore: 5.5,
-          weight: 0.1,
+          threshold: 5,
+          passed: false,
           details: 'Few reviews',
           dataPoints: 2
         }
       ]
 
-      const recommendations = generateRecommendations(metricsData, metrics, 500)
+      const recommendations = generateRecommendations(metricsData, metrics)
 
       expect(
         recommendations.some((r) => r.toLowerCase().includes('code review'))
       ).toBe(true)
     })
 
-    it('adds general recommendation for very low score with no specific issues', () => {
+    it('adds general recommendation when metrics fail but no specific recommendation applies', () => {
       const metricsData: AllMetricsData = {
         prHistory: {
           totalPRs: 0,
@@ -416,8 +458,8 @@ describe('Scoring Engine', () => {
           positiveRatio: 0.5
         },
         account: {
-          createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
-          ageInDays: 5,
+          createdAt: new Date(Date.now() - 100 * 24 * 60 * 60 * 1000),
+          ageInDays: 100,
           monthsWithActivity: 0,
           totalMonthsInWindow: 12,
           consistencyScore: 0
@@ -435,22 +477,23 @@ describe('Scoring Engine', () => {
         }
       }
 
-      const metrics: MetricResult[] = [
+      // A metric that fails but doesn't have a specific recommendation
+      const metrics: MetricCheckResult[] = [
         {
-          name: 'prMergeRate',
+          name: 'positiveReactions',
           rawValue: 0,
-          normalizedScore: 50,
-          weightedScore: 10,
-          weight: 0.2,
-          details: 'No data',
+          threshold: 5,
+          passed: false,
+          details: 'No reactions',
           dataPoints: 0
         }
       ]
 
-      const recommendations = generateRecommendations(metricsData, metrics, 200)
+      const recommendations = generateRecommendations(metricsData, metrics)
 
+      // Should have the positiveReactions specific recommendation
       expect(
-        recommendations.some((r) => r.toLowerCase().includes('build'))
+        recommendations.some((r) => r.toLowerCase().includes('engage'))
       ).toBe(true)
     })
   })

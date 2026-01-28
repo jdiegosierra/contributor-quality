@@ -3,7 +3,7 @@
  */
 
 import type { GraphQLContributorData } from '../types/github.js'
-import type { AccountData, MetricResult } from '../types/metrics.js'
+import type { AccountData, MetricCheckResult } from '../types/metrics.js'
 
 /**
  * Extract account data from GraphQL response
@@ -48,104 +48,83 @@ export function extractAccountData(
 }
 
 /**
- * Calculate account age metric score
+ * Check account age against threshold
  *
- * Scoring (bonus for established accounts, no penalty for new):
- * - 365+ days = 100 points
- * - 180-365 days = 75 points
- * - 90-180 days = 60 points
- * - 30-90 days = 55 points
- * - <30 days = 50 points (neutral, not penalized)
+ * @param data - Extracted account data
+ * @param threshold - Minimum account age in days to pass
+ * @returns MetricCheckResult with pass/fail status
  */
-export function calculateAccountAgeMetric(
+export function checkAccountAge(
   data: AccountData,
-  weight: number
-): MetricResult {
-  let normalizedScore: number
+  threshold: number
+): MetricCheckResult {
+  const ageInDays = data.ageInDays
+  const passed = ageInDays >= threshold
+
   let details: string
 
-  if (data.ageInDays >= 365) {
-    normalizedScore = 100
-    const years = Math.floor(data.ageInDays / 365)
-    details = `Established account: ${years}+ year${years > 1 ? 's' : ''} old`
-  } else if (data.ageInDays >= 180) {
-    normalizedScore = 75
-    details = `Mature account: ${Math.floor(data.ageInDays / 30)} months old`
-  } else if (data.ageInDays >= 90) {
-    normalizedScore = 60
-    details = `Account age: ${Math.floor(data.ageInDays / 30)} months old`
-  } else if (data.ageInDays >= 30) {
-    normalizedScore = 55
-    details = `Recent account: ${data.ageInDays} days old`
+  if (ageInDays >= 365) {
+    const years = Math.floor(ageInDays / 365)
+    details = `Account is ${years}+ year${years > 1 ? 's' : ''} old (${ageInDays} days)`
+  } else if (ageInDays >= 30) {
+    details = `Account is ${Math.floor(ageInDays / 30)} months old (${ageInDays} days)`
   } else {
-    normalizedScore = 50
-    details = `New account: ${data.ageInDays} days old`
+    details = `Account is ${ageInDays} days old`
   }
+
+  details += passed
+    ? ` (meets threshold >= ${threshold} days)`
+    : ` (below threshold >= ${threshold} days)`
 
   return {
     name: 'accountAge',
-    rawValue: data.ageInDays,
-    normalizedScore,
-    weightedScore: normalizedScore * weight,
-    weight,
+    rawValue: ageInDays,
+    threshold,
+    passed,
     details,
     dataPoints: 1
   }
 }
 
 /**
- * Calculate activity consistency metric score
+ * Check activity consistency against threshold
  *
- * Scoring:
- * - 12/12 months active = 100 points
- * - 9-11 months active = 85 points
- * - 6-8 months active = 70 points
- * - 3-5 months active = 55 points
- * - <3 months active = 50 points (neutral for new accounts)
+ * @param data - Extracted account data
+ * @param threshold - Minimum consistency score (0-1) to pass
+ * @returns MetricCheckResult with pass/fail status
  */
-export function calculateActivityConsistencyMetric(
+export function checkActivityConsistency(
   data: AccountData,
-  weight: number
-): MetricResult {
-  let normalizedScore: number
-  let details: string
+  threshold: number
+): MetricCheckResult {
+  const consistencyScore = data.consistencyScore
+  const passed = consistencyScore >= threshold
 
   const activeMonths = data.monthsWithActivity
   const totalMonths = data.totalMonthsInWindow
+
+  let details: string
 
   // For accounts younger than analysis window, adjust expectations
   const effectiveMonths = Math.min(totalMonths, Math.ceil(data.ageInDays / 30))
 
   if (effectiveMonths === 0) {
-    normalizedScore = 50
     details = 'Account too new to evaluate consistency'
   } else {
-    const ratio = activeMonths / effectiveMonths
-
-    if (ratio >= 0.9) {
-      normalizedScore = 100
-      details = `Very consistent: Active in ${activeMonths}/${effectiveMonths} months`
-    } else if (ratio >= 0.7) {
-      normalizedScore = 85
-      details = `Consistent: Active in ${activeMonths}/${effectiveMonths} months`
-    } else if (ratio >= 0.5) {
-      normalizedScore = 70
-      details = `Moderate consistency: Active in ${activeMonths}/${effectiveMonths} months`
-    } else if (ratio >= 0.25) {
-      normalizedScore = 55
-      details = `Occasional activity: Active in ${activeMonths}/${effectiveMonths} months`
-    } else {
-      normalizedScore = 50
-      details = `Sparse activity: Active in ${activeMonths}/${effectiveMonths} months`
-    }
+    const percentage = (consistencyScore * 100).toFixed(0)
+    details = `Active in ${activeMonths}/${effectiveMonths} months (${percentage}% consistency)`
   }
+
+  const thresholdPercent = (threshold * 100).toFixed(0)
+  details += passed
+    ? ` (meets threshold >= ${thresholdPercent}%)`
+    : ` (below threshold >= ${thresholdPercent}%)`
 
   return {
     name: 'activityConsistency',
-    rawValue: data.consistencyScore,
-    normalizedScore,
-    weightedScore: normalizedScore * weight,
-    weight,
+    rawValue: consistencyScore,
+    threshold,
+    passed,
     details,
     dataPoints: activeMonths
   }

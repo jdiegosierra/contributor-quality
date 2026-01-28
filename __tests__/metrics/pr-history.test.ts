@@ -4,82 +4,188 @@
 import { describe, it, expect } from '@jest/globals'
 import {
   extractPRHistoryData,
-  calculatePRHistoryMetric
+  checkPRMergeRate
 } from '../../src/metrics/pr-history.js'
-import {
-  qualityContributorResponse,
-  spamContributorResponse,
-  newUserResponse
-} from '../../__fixtures__/api-responses/contributor-data.js'
+import type { GraphQLContributorData } from '../../src/types/github.js'
+import type { PRHistoryData } from '../../src/types/metrics.js'
 
 describe('PR History Metric', () => {
-  const oneYearAgo = new Date()
-  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
+  const sinceDate = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)
 
   describe('extractPRHistoryData', () => {
-    it('extracts correct counts from quality contributor', () => {
-      const data = extractPRHistoryData(qualityContributorResponse, oneYearAgo)
-
-      expect(data.totalPRs).toBe(4)
-      expect(data.mergedPRs).toBe(3)
-      expect(data.closedWithoutMerge).toBe(1)
-    })
-
     it('calculates merge rate correctly', () => {
-      const data = extractPRHistoryData(qualityContributorResponse, oneYearAgo)
+      const data: GraphQLContributorData = {
+        user: {
+          login: 'test-user',
+          createdAt: new Date().toISOString(),
+          pullRequests: {
+            totalCount: 10,
+            nodes: [
+              ...Array(8)
+                .fill(null)
+                .map(() => ({
+                  state: 'MERGED' as const,
+                  merged: true,
+                  mergedAt: new Date().toISOString(),
+                  createdAt: new Date().toISOString(),
+                  closedAt: new Date().toISOString(),
+                  additions: 50,
+                  deletions: 20,
+                  repository: {
+                    owner: { login: 'org' },
+                    name: 'repo',
+                    stargazerCount: 100
+                  }
+                })),
+              ...Array(2)
+                .fill(null)
+                .map(() => ({
+                  state: 'CLOSED' as const,
+                  merged: false,
+                  mergedAt: null,
+                  createdAt: new Date().toISOString(),
+                  closedAt: new Date().toISOString(),
+                  additions: 50,
+                  deletions: 20,
+                  repository: {
+                    owner: { login: 'org' },
+                    name: 'repo',
+                    stargazerCount: 100
+                  }
+                }))
+            ],
+            pageInfo: { hasNextPage: false, endCursor: null }
+          },
+          issues: {
+            totalCount: 0,
+            nodes: [],
+            pageInfo: { hasNextPage: false, endCursor: null }
+          },
+          contributionsCollection: {
+            contributionCalendar: { totalContributions: 0, weeks: [] },
+            pullRequestReviewContributions: { totalCount: 0 }
+          },
+          issueComments: {
+            totalCount: 0,
+            nodes: [],
+            pageInfo: { hasNextPage: false, endCursor: null }
+          }
+        }
+      }
 
-      // 3 merged / (3 merged + 1 closed) = 0.75
-      expect(data.mergeRate).toBe(0.75)
+      const result = extractPRHistoryData(data, sinceDate)
+
+      expect(result.totalPRs).toBe(10)
+      expect(result.mergedPRs).toBe(8)
+      expect(result.closedWithoutMerge).toBe(2)
+      expect(result.mergeRate).toBe(0.8) // 8/(8+2)
     })
 
-    it('handles user with no PRs', () => {
-      const data = extractPRHistoryData(newUserResponse, oneYearAgo)
+    it('handles no PRs', () => {
+      const data: GraphQLContributorData = {
+        user: {
+          login: 'test-user',
+          createdAt: new Date().toISOString(),
+          pullRequests: {
+            totalCount: 0,
+            nodes: [],
+            pageInfo: { hasNextPage: false, endCursor: null }
+          },
+          issues: {
+            totalCount: 0,
+            nodes: [],
+            pageInfo: { hasNextPage: false, endCursor: null }
+          },
+          contributionsCollection: {
+            contributionCalendar: { totalContributions: 0, weeks: [] },
+            pullRequestReviewContributions: { totalCount: 0 }
+          },
+          issueComments: {
+            totalCount: 0,
+            nodes: [],
+            pageInfo: { hasNextPage: false, endCursor: null }
+          }
+        }
+      }
 
-      expect(data.totalPRs).toBe(0)
-      expect(data.mergedPRs).toBe(0)
-      expect(data.mergeRate).toBe(0)
-    })
+      const result = extractPRHistoryData(data, sinceDate)
 
-    it('identifies very short PRs', () => {
-      const data = extractPRHistoryData(spamContributorResponse, oneYearAgo)
-
-      // All PRs have 4 lines (3+1), which is < 10
-      expect(data.veryShortPRs).toBe(data.totalPRs)
+      expect(result.totalPRs).toBe(0)
+      expect(result.mergeRate).toBe(0)
     })
   })
 
-  describe('calculatePRHistoryMetric', () => {
-    it('gives high score for good merge rate', () => {
-      const data = extractPRHistoryData(qualityContributorResponse, oneYearAgo)
-      const result = calculatePRHistoryMetric(data, 0.2)
+  describe('checkPRMergeRate', () => {
+    it('passes when merge rate is above threshold', () => {
+      const data: PRHistoryData = {
+        totalPRs: 10,
+        mergedPRs: 8,
+        closedWithoutMerge: 2,
+        openPRs: 0,
+        mergeRate: 0.8,
+        averagePRSize: 100,
+        veryShortPRs: 0,
+        mergedPRDates: [new Date()]
+      }
 
-      // 75% merge rate should give good score
-      expect(result.normalizedScore).toBeGreaterThan(60)
+      const result = checkPRMergeRate(data, 0.3)
+
+      expect(result.passed).toBe(true)
+      expect(result.rawValue).toBe(0.8)
+      expect(result.threshold).toBe(0.3)
     })
 
-    it('gives low score for poor merge rate', () => {
-      const data = extractPRHistoryData(spamContributorResponse, oneYearAgo)
-      const result = calculatePRHistoryMetric(data, 0.2)
+    it('fails when merge rate is below threshold', () => {
+      const data: PRHistoryData = {
+        totalPRs: 10,
+        mergedPRs: 2,
+        closedWithoutMerge: 8,
+        openPRs: 0,
+        mergeRate: 0.2,
+        averagePRSize: 100,
+        veryShortPRs: 0,
+        mergedPRDates: []
+      }
 
-      // Low merge rate should give low score
-      expect(result.normalizedScore).toBeLessThan(50)
+      const result = checkPRMergeRate(data, 0.3)
+
+      expect(result.passed).toBe(false)
+      expect(result.rawValue).toBe(0.2)
     })
 
-    it('gives neutral score for no data', () => {
-      const data = extractPRHistoryData(newUserResponse, oneYearAgo)
-      const result = calculatePRHistoryMetric(data, 0.2)
+    it('passes for threshold of 0 with no PRs', () => {
+      const data: PRHistoryData = {
+        totalPRs: 0,
+        mergedPRs: 0,
+        closedWithoutMerge: 0,
+        openPRs: 0,
+        mergeRate: 0,
+        averagePRSize: 0,
+        veryShortPRs: 0,
+        mergedPRDates: []
+      }
 
-      expect(result.normalizedScore).toBe(50)
-      expect(result.dataPoints).toBe(0)
+      const result = checkPRMergeRate(data, 0)
+
+      expect(result.passed).toBe(true)
     })
 
-    it('applies weight correctly', () => {
-      const data = extractPRHistoryData(qualityContributorResponse, oneYearAgo)
-      const weight = 0.2
-      const result = calculatePRHistoryMetric(data, weight)
+    it('fails for no PRs when threshold > 0', () => {
+      const data: PRHistoryData = {
+        totalPRs: 0,
+        mergedPRs: 0,
+        closedWithoutMerge: 0,
+        openPRs: 0,
+        mergeRate: 0,
+        averagePRSize: 0,
+        veryShortPRs: 0,
+        mergedPRDates: []
+      }
 
-      expect(result.weight).toBe(weight)
-      expect(result.weightedScore).toBe(result.normalizedScore * weight)
+      const result = checkPRMergeRate(data, 0.3)
+
+      expect(result.passed).toBe(false)
+      expect(result.details).toContain('No PR history')
     })
   })
 })

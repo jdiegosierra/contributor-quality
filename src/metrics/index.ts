@@ -3,45 +3,31 @@
  */
 
 // PR History
-export { extractPRHistoryData, calculatePRHistoryMetric } from './pr-history.js'
+export { extractPRHistoryData, checkPRMergeRate } from './pr-history.js'
 
 // Repo Quality
-export {
-  extractRepoQualityData,
-  calculateRepoQualityMetric
-} from './repo-quality.js'
+export { extractRepoQualityData, checkRepoQuality } from './repo-quality.js'
 
 // Reactions
 export {
   extractReactionData,
-  calculatePositiveReactionsMetric,
-  calculateNegativeReactionsMetric
+  checkPositiveReactions,
+  checkNegativeReactions
 } from './reactions.js'
 
 // Account Age
 export {
   extractAccountData,
-  calculateAccountAgeMetric,
-  calculateActivityConsistencyMetric,
+  checkAccountAge,
+  checkActivityConsistency,
   isNewAccount
 } from './account-age.js'
 
 // Issue Engagement
 export {
   extractIssueEngagementData,
-  calculateIssueEngagementMetric
+  checkIssueEngagement
 } from './issue-engagement.js'
 
 // Code Reviews
-export {
-  extractCodeReviewData,
-  calculateCodeReviewMetric
-} from './code-review.js'
-
-// Spam Detection
-export {
-  detectSpamPatterns,
-  calculateSpamPenalty,
-  createSpamPenaltyMetric,
-  type SpamPenalty
-} from './spam-detection.js'
+export { extractCodeReviewData, checkCodeReviews } from './code-review.js'

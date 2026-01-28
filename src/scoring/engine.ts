@@ -1,35 +1,30 @@
 /**
- * Main scoring engine that aggregates all metrics
+ * Main evaluation engine that checks all metrics against thresholds
  */
 
 import type { GraphQLContributorData } from '../types/github.js'
 import type { ContributorQualityConfig } from '../types/config.js'
-import type { MetricResult, AllMetricsData } from '../types/metrics.js'
-import type { ScoringResult, ScoreBreakdown } from '../types/scoring.js'
-import { SCORING_CONSTANTS } from '../types/scoring.js'
+import type { MetricCheckResult, AllMetricsData } from '../types/metrics.js'
+import type { AnalysisResult } from '../types/scoring.js'
+import { ANALYSIS_CONSTANTS } from '../types/scoring.js'
 
 import {
   extractPRHistoryData,
-  calculatePRHistoryMetric,
+  checkPRMergeRate,
   extractRepoQualityData,
-  calculateRepoQualityMetric,
+  checkRepoQuality,
   extractReactionData,
-  calculatePositiveReactionsMetric,
-  calculateNegativeReactionsMetric,
+  checkPositiveReactions,
+  checkNegativeReactions,
   extractAccountData,
-  calculateAccountAgeMetric,
-  calculateActivityConsistencyMetric,
+  checkAccountAge,
+  checkActivityConsistency,
   isNewAccount,
   extractIssueEngagementData,
-  calculateIssueEngagementMetric,
+  checkIssueEngagement,
   extractCodeReviewData,
-  calculateCodeReviewMetric,
-  detectSpamPatterns,
-  calculateSpamPenalty
+  checkCodeReviews
 } from '../metrics/index.js'
-
-import { calculateDecayFactor, applyDecayTowardBaseline } from './decay.js'
-import { normalizeScore } from './normalizer.js'
 
 /**
  * Extract all metrics data from GraphQL response
@@ -50,158 +45,114 @@ export function extractAllMetrics(
 }
 
 /**
- * Calculate all metric scores
+ * Check all metrics against their thresholds
  */
-export function calculateAllMetrics(
+export function checkAllMetrics(
   metricsData: AllMetricsData,
   config: ContributorQualityConfig
-): MetricResult[] {
-  const weights = config.weights
+): MetricCheckResult[] {
+  const thresholds = config.thresholds
 
   return [
-    calculatePRHistoryMetric(metricsData.prHistory, weights.prMergeRate),
-    calculateRepoQualityMetric(
+    checkPRMergeRate(metricsData.prHistory, thresholds.prMergeRate),
+    checkRepoQuality(
       metricsData.repoQuality,
-      weights.repoQuality,
+      thresholds.repoQuality,
       config.minimumStars
     ),
-    calculatePositiveReactionsMetric(
-      metricsData.reactions,
-      weights.positiveReactions
-    ),
-    calculateNegativeReactionsMetric(
-      metricsData.reactions,
-      weights.negativeReactions
-    ),
-    calculateAccountAgeMetric(metricsData.account, weights.accountAge),
-    calculateActivityConsistencyMetric(
+    checkPositiveReactions(metricsData.reactions, thresholds.positiveReactions),
+    checkNegativeReactions(metricsData.reactions, thresholds.negativeReactions),
+    checkAccountAge(metricsData.account, thresholds.accountAge),
+    checkActivityConsistency(
       metricsData.account,
-      weights.activityConsistency
+      thresholds.activityConsistency
     ),
-    calculateIssueEngagementMetric(
+    checkIssueEngagement(
       metricsData.issueEngagement,
-      weights.issueEngagement
+      thresholds.issueEngagement
     ),
-    calculateCodeReviewMetric(metricsData.codeReviews, weights.codeReviews)
+    checkCodeReviews(metricsData.codeReviews, thresholds.codeReviews)
   ]
 }
 
 /**
- * Calculate detailed score breakdown
+ * Determine if all required metrics passed
  */
-export function calculateBreakdown(
-  metrics: MetricResult[],
-  spamPenalty: number
-): ScoreBreakdown {
-  const positiveAdjustments = metrics
-    .filter((m) => m.normalizedScore > 50)
-    .map((m) => ({
-      metric: m.name,
-      points: Math.round((m.normalizedScore - 50) * m.weight * 10),
-      reason: m.details
-    }))
-
-  const negativeAdjustments = metrics
-    .filter((m) => m.normalizedScore < 50)
-    .map((m) => ({
-      metric: m.name,
-      points: Math.round((50 - m.normalizedScore) * m.weight * 10),
-      reason: m.details
-    }))
-
-  const spamPenalties =
-    spamPenalty > 0
-      ? [
-          {
-            metric: 'spamPatterns',
-            points: spamPenalty,
-            reason: 'Spam pattern detection penalty'
-          }
-        ]
-      : []
-
-  // Calculate final score from weighted averages
-  const weightedSum = metrics.reduce((sum, m) => sum + m.weightedScore, 0)
-  const baseScore = normalizeScore(weightedSum)
-  const finalScore = Math.max(
-    SCORING_CONSTANTS.MIN_SCORE,
-    Math.min(SCORING_CONSTANTS.MAX_SCORE, baseScore - spamPenalty)
-  )
-
-  return {
-    baselineScore: SCORING_CONSTANTS.BASELINE_SCORE,
-    positiveAdjustments,
-    negativeAdjustments,
-    spamPenalties,
-    finalScore
+export function determinePassStatus(
+  metrics: MetricCheckResult[],
+  requiredMetrics: string[]
+): boolean {
+  // If no required metrics specified, all must pass
+  if (requiredMetrics.length === 0) {
+    return metrics.every((m) => m.passed)
   }
+
+  // Check only the required metrics
+  return requiredMetrics.every((requiredName) => {
+    const metric = metrics.find((m) => m.name === requiredName)
+    return metric ? metric.passed : true // If metric not found, assume pass
+  })
 }
 
 /**
- * Generate recommendations based on scoring
+ * Generate recommendations based on failed metrics
  */
 export function generateRecommendations(
   metricsData: AllMetricsData,
-  metrics: MetricResult[],
-  score: number
+  metrics: MetricCheckResult[]
 ): string[] {
   const recommendations: string[] = []
+  const failedMetrics = metrics.filter((m) => !m.passed)
 
-  // Low merge rate recommendation
-  const prMetric = metrics.find((m) => m.name === 'prMergeRate')
-  if (prMetric && prMetric.normalizedScore < 50) {
-    recommendations.push(
-      'Improve PR quality to increase merge rate. Focus on smaller, well-documented changes.'
-    )
+  for (const metric of failedMetrics) {
+    switch (metric.name) {
+      case 'prMergeRate':
+        recommendations.push(
+          'Improve PR quality to increase merge rate. Focus on smaller, well-documented changes.'
+        )
+        break
+      case 'repoQuality':
+        recommendations.push(
+          'Consider contributing to established open source projects with significant community adoption.'
+        )
+        break
+      case 'codeReviews':
+        recommendations.push(
+          'Participate in code reviews to demonstrate engagement with the community.'
+        )
+        break
+      case 'negativeReactions':
+        recommendations.push(
+          'Focus on constructive communication to improve community reception.'
+        )
+        break
+      case 'accountAge':
+        recommendations.push(
+          'Continue building your contribution history. New accounts naturally have limited data.'
+        )
+        break
+      case 'activityConsistency':
+        if (metricsData.account.ageInDays >= 90) {
+          recommendations.push(
+            'Maintain consistent activity over time to build a stronger contribution profile.'
+          )
+        }
+        break
+      case 'positiveReactions':
+        recommendations.push(
+          'Engage more with the community through helpful comments and discussions.'
+        )
+        break
+      case 'issueEngagement':
+        recommendations.push(
+          'Create issues to report bugs or suggest features, and engage with the community.'
+        )
+        break
+    }
   }
 
-  // No quality repo contributions
-  const repoMetric = metrics.find((m) => m.name === 'repoQuality')
-  if (repoMetric && metricsData.repoQuality.qualityRepoCount === 0) {
-    recommendations.push(
-      'Consider contributing to established open source projects with significant community adoption.'
-    )
-  }
-
-  // Low code review activity
-  const reviewMetric = metrics.find((m) => m.name === 'codeReviews')
-  if (reviewMetric && metricsData.codeReviews.reviewsGiven < 5) {
-    recommendations.push(
-      'Participate in code reviews to demonstrate engagement with the community.'
-    )
-  }
-
-  // Negative reactions
-  const negReactionMetric = metrics.find((m) => m.name === 'negativeReactions')
-  if (negReactionMetric && negReactionMetric.normalizedScore < 40) {
-    recommendations.push(
-      'Focus on constructive communication to improve community reception.'
-    )
-  }
-
-  // New account
-  if (metricsData.account.ageInDays < 30) {
-    recommendations.push(
-      'Continue building your contribution history. New accounts naturally have limited data.'
-    )
-  }
-
-  // Low activity consistency
-  const consistencyMetric = metrics.find(
-    (m) => m.name === 'activityConsistency'
-  )
-  if (
-    consistencyMetric &&
-    consistencyMetric.normalizedScore < 60 &&
-    metricsData.account.ageInDays >= 90
-  ) {
-    recommendations.push(
-      'Maintain consistent activity over time to build a stronger contribution profile.'
-    )
-  }
-
-  // Overall low score
-  if (score < 300 && recommendations.length === 0) {
+  // General recommendation if no specific recommendations
+  if (recommendations.length === 0 && failedMetrics.length > 0) {
     recommendations.push(
       'Build your GitHub profile through meaningful contributions, code reviews, and community engagement.'
     )
@@ -211,51 +162,28 @@ export function generateRecommendations(
 }
 
 /**
- * Main scoring function
+ * Main evaluation function
  */
-export function calculateScore(
+export function evaluateContributor(
   data: GraphQLContributorData,
   config: ContributorQualityConfig,
   sinceDate: Date
-): ScoringResult {
+): AnalysisResult {
   const username = data.user.login
   const now = new Date()
 
   // Extract all metrics data
   const metricsData = extractAllMetrics(data, config, sinceDate)
 
-  // Calculate individual metric scores
-  const metrics = calculateAllMetrics(metricsData, config)
+  // Check all metrics against thresholds
+  const metrics = checkAllMetrics(metricsData, config)
 
-  // Detect spam patterns
-  const spamPatterns = detectSpamPatterns(
-    metricsData.prHistory,
-    metricsData.account
-  )
-  const spamPenalty = calculateSpamPenalty(spamPatterns)
+  // Determine pass/fail based on required metrics
+  const passed = determinePassStatus(metrics, config.requiredMetrics)
 
-  // Calculate decay factor based on activity recency
-  const decayFactor = calculateDecayFactor(metricsData.prHistory.mergedPRDates)
-
-  // Calculate weighted score
-  const weightedSum = metrics.reduce((sum, m) => sum + m.weightedScore, 0)
-  const rawScore = normalizeScore(weightedSum)
-
-  // Apply spam penalty first
-  const scoreAfterPenalty = rawScore - spamPenalty
-
-  // Apply decay toward baseline (this moves score toward 500)
-  // Decay is applied to the distance from baseline, not the raw score
-  const decayedScore = applyDecayTowardBaseline(scoreAfterPenalty, decayFactor)
-
-  // Clamp to valid range
-  const finalScore = Math.max(
-    SCORING_CONSTANTS.MIN_SCORE,
-    Math.min(SCORING_CONSTANTS.MAX_SCORE, decayedScore)
-  )
-
-  // Determine pass/fail
-  const passed = finalScore >= config.minimumScore
+  // Calculate counts
+  const passedCount = metrics.filter((m) => m.passed).length
+  const failedMetrics = metrics.filter((m) => !m.passed).map((m) => m.name)
 
   // Check account status
   const accountIsNew = isNewAccount(
@@ -264,22 +192,17 @@ export function calculateScore(
   )
   const totalDataPoints = metrics.reduce((sum, m) => sum + m.dataPoints, 0)
   const hasLimitedData =
-    totalDataPoints < SCORING_CONSTANTS.MIN_CONTRIBUTIONS_FOR_DATA
+    totalDataPoints < ANALYSIS_CONSTANTS.MIN_CONTRIBUTIONS_FOR_DATA
 
-  // Generate recommendations
-  const recommendations = generateRecommendations(
-    metricsData,
-    metrics,
-    finalScore
-  )
+  // Generate recommendations based on failed metrics
+  const recommendations = generateRecommendations(metricsData, metrics)
 
   return {
-    score: finalScore,
-    rawScore,
-    decayFactor,
     passed,
-    threshold: config.minimumScore,
+    passedCount,
+    totalMetrics: metrics.length,
     metrics,
+    failedMetrics,
     username,
     analyzedAt: now,
     dataWindowStart: sinceDate,

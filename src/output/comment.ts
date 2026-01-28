@@ -2,30 +2,29 @@
  * PR comment generation
  */
 
-import type { ScoringResult } from '../types/scoring.js'
+import type { AnalysisResult } from '../types/scoring.js'
 import type { ContributorQualityConfig } from '../types/config.js'
-import {
-  getScoreEmoji,
-  formatScore,
-  scoreToPercentage
-} from '../scoring/normalizer.js'
+import type { MetricCheckResult } from '../types/metrics.js'
+
+/** Unique marker to identify our comments for updates */
+export const COMMENT_MARKER = '<!-- contributor-quality-check -->'
 
 /**
- * Generate PR comment for low score
+ * Generate PR comment with analysis results
  */
-export function generateLowScoreComment(
-  result: ScoringResult,
+export function generateAnalysisComment(
+  result: AnalysisResult,
   config: ContributorQualityConfig
 ): string {
-  const emoji = getScoreEmoji(result.score)
-  const percentage = scoreToPercentage(result.score)
+  const statusEmoji = result.passed ? '✅' : '⚠️'
+  const statusText = result.passed ? 'Passed' : 'Needs Review'
 
   const lines: string[] = [
-    `## ${emoji} Contributor Quality Check`,
+    COMMENT_MARKER,
+    `## ${statusEmoji} Contributor Quality Check`,
     '',
-    `**Score:** ${formatScore(result.score)} (${percentage}%)`,
-    `**Status:** ${result.passed ? 'Passed' : 'Requires Review'}`,
-    `**Threshold:** ${config.minimumScore}`,
+    `**User:** @${result.username}`,
+    `**Status:** ${statusText} (${result.passedCount}/${result.totalMetrics} metrics passed)`,
     ''
   ]
 
@@ -42,28 +41,30 @@ export function generateLowScoreComment(
   if (result.hasLimitedData && !result.isNewAccount) {
     lines.push(
       '> **Note:** Limited contribution data available. ' +
-        'This may affect score accuracy.'
+        'Results may be affected.'
     )
     lines.push('')
   }
 
-  // Score breakdown
-  lines.push('### Score Breakdown')
+  // Metric results table
+  lines.push('### Metric Results')
   lines.push('')
-  lines.push('| Metric | Score | Details |')
-  lines.push('|--------|-------|---------|')
+  lines.push('| Metric | Value | Threshold | Status |')
+  lines.push('|--------|-------|-----------|--------|')
 
   for (const metric of result.metrics) {
-    const scoreBar = generateScoreBar(metric.normalizedScore)
+    const statusIcon = metric.passed ? '✅' : '❌'
+    const formattedValue = formatMetricValue(metric)
+    const formattedThreshold = formatThreshold(metric)
     lines.push(
-      `| ${formatMetricName(metric.name)} | ${scoreBar} | ${metric.details} |`
+      `| ${formatMetricName(metric.name)} | ${formattedValue} | ${formattedThreshold} | ${statusIcon} |`
     )
   }
 
   lines.push('')
 
-  // Recommendations
-  if (result.recommendations.length > 0) {
+  // Recommendations (only if there are failed metrics)
+  if (result.recommendations.length > 0 && !result.passed) {
     lines.push('### Recommendations')
     lines.push('')
     for (const rec of result.recommendations) {
@@ -75,37 +76,38 @@ export function generateLowScoreComment(
   // Footer
   lines.push('---')
   lines.push(
-    `<sub>This check evaluates contributor quality based on public GitHub activity. ` +
-      `[Learn more about scoring](https://github.com/jdiegosierra/contributor-quality#scoring-system)</sub>`
+    `<sub>Contributor Quality Check evaluates based on public GitHub activity. ` +
+      `Analysis period: ${result.dataWindowStart.toISOString().split('T')[0]} to ${result.dataWindowEnd.toISOString().split('T')[0]}</sub>`
   )
 
   return lines.join('\n')
 }
 
 /**
- * Generate PR comment for passed check
+ * Generate PR comment for passed check (compact version)
  */
-export function generatePassedComment(result: ScoringResult): string {
-  const emoji = getScoreEmoji(result.score)
-
-  return [
-    `## ${emoji} Contributor Quality Check`,
+export function generatePassedComment(result: AnalysisResult): string {
+  const lines: string[] = [
+    COMMENT_MARKER,
+    '## ✅ Contributor Quality Check',
     '',
-    `**Score:** ${formatScore(result.score)}`,
-    `**Status:** Passed ✓`,
+    `**User:** @${result.username}`,
+    `**Status:** Passed (${result.passedCount}/${result.totalMetrics} metrics)`,
     '',
     '<details>',
-    '<summary>View score breakdown</summary>',
+    '<summary>View metric details</summary>',
     '',
-    '| Metric | Score |',
-    '|--------|-------|',
-    ...result.metrics.map(
-      (m) =>
-        `| ${formatMetricName(m.name)} | ${generateScoreBar(m.normalizedScore)} |`
-    ),
+    '| Metric | Value | Threshold | Status |',
+    '|--------|-------|-----------|--------|',
+    ...result.metrics.map((m) => {
+      const statusIcon = m.passed ? '✅' : '❌'
+      return `| ${formatMetricName(m.name)} | ${formatMetricValue(m)} | ${formatThreshold(m)} | ${statusIcon} |`
+    }),
     '',
     '</details>'
-  ].join('\n')
+  ]
+
+  return lines.join('\n')
 }
 
 /**
@@ -113,28 +115,52 @@ export function generatePassedComment(result: ScoringResult): string {
  */
 export function generateWhitelistComment(username: string): string {
   return [
+    COMMENT_MARKER,
     '## ✅ Contributor Quality Check',
     '',
     `**User:** @${username}`,
     `**Status:** Trusted contributor (whitelisted)`,
     '',
-    'This user is on the trusted contributors list and was not analyzed.'
+    'This user is on the trusted contributors list and was automatically approved.'
   ].join('\n')
 }
 
 /**
- * Generate visual score bar
+ * Format metric value for display
  */
-function generateScoreBar(score: number): string {
-  const filled = Math.round(score / 10)
-  const empty = 10 - filled
+function formatMetricValue(metric: MetricCheckResult): string {
+  switch (metric.name) {
+    case 'prMergeRate':
+    case 'activityConsistency':
+      return `${(metric.rawValue * 100).toFixed(0)}%`
+    case 'accountAge':
+      return `${metric.rawValue} days`
+    default:
+      return `${metric.rawValue}`
+  }
+}
 
-  let emoji: string
-  if (score >= 70) emoji = '🟢'
-  else if (score >= 50) emoji = '🟡'
-  else emoji = '🔴'
+/**
+ * Format threshold for display
+ */
+function formatThreshold(metric: MetricCheckResult): string {
+  // For negative reactions, it's a maximum (<=)
+  if (metric.name === 'negativeReactions') {
+    return `<= ${metric.threshold}`
+  }
 
-  return `${emoji} ${'█'.repeat(filled)}${'░'.repeat(empty)} ${score}%`
+  // For percentages
+  if (metric.name === 'prMergeRate' || metric.name === 'activityConsistency') {
+    return `>= ${(metric.threshold * 100).toFixed(0)}%`
+  }
+
+  // For account age
+  if (metric.name === 'accountAge') {
+    return `>= ${metric.threshold} days`
+  }
+
+  // Default (>=)
+  return `>= ${metric.threshold}`
 }
 
 /**

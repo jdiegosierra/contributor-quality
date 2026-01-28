@@ -5,11 +5,16 @@
 import * as core from '@actions/core'
 import type {
   ContributorQualityConfig,
-  MetricWeights,
-  LowScoreAction,
+  MetricThresholds,
+  FailAction,
   NewAccountAction
 } from '../types/config.js'
-import { DEFAULT_CONFIG, mergeWeights, validateWeights } from './defaults.js'
+import {
+  DEFAULT_CONFIG,
+  mergeThresholds,
+  validateThresholds,
+  validateRequiredMetrics
+} from './defaults.js'
 
 /** Parse comma-separated string into array */
 function parseList(input: string): string[] {
@@ -35,19 +40,19 @@ function parseJSON<T>(input: string, fallback: T): T {
   }
 }
 
-/** Validate low score action */
-function validateLowScoreAction(action: string): LowScoreAction {
-  const valid: LowScoreAction[] = [
+/** Validate fail action */
+function validateFailAction(action: string): FailAction {
+  const valid: FailAction[] = [
     'comment',
     'label',
     'fail',
     'comment-and-label',
     'none'
   ]
-  if (valid.includes(action as LowScoreAction)) {
-    return action as LowScoreAction
+  if (valid.includes(action as FailAction)) {
+    return action as FailAction
   }
-  core.warning(`Invalid on-low-score value: ${action}. Using 'comment'.`)
+  core.warning(`Invalid on-fail value: ${action}. Using 'comment'.`)
   return 'comment'
 }
 
@@ -77,14 +82,26 @@ function parseIntSafe(
   return parsed
 }
 
+/** Parse float with validation */
+function parseFloatSafe(
+  value: string,
+  name: string,
+  defaultValue: number
+): number {
+  if (!value || value.trim() === '') {
+    return defaultValue
+  }
+  const parsed = parseFloat(value)
+  if (isNaN(parsed)) {
+    throw new Error(`Invalid ${name}: "${value}" is not a valid number`)
+  }
+  return parsed
+}
+
 /** Validate the complete config object */
 function validateConfig(config: ContributorQualityConfig): void {
-  // Validate minimum score range
-  if (config.minimumScore < 0 || config.minimumScore > 1000) {
-    throw new Error(
-      `minimum-score must be between 0 and 1000, got ${config.minimumScore}`
-    )
-  }
+  // Validate thresholds
+  validateThresholds(config.thresholds)
 
   // Validate minimum stars is positive
   if (config.minimumStars < 0) {
@@ -106,17 +123,59 @@ function validateConfig(config: ContributorQualityConfig): void {
       `new-account-threshold-days must be a positive number, got ${config.newAccountThresholdDays}`
     )
   }
+
+  // Validate required metrics
+  validateRequiredMetrics(config.requiredMetrics)
 }
 
 /** Parse all action inputs into config object */
 export function parseInputs(): ContributorQualityConfig {
   const githubToken = core.getInput('github-token', { required: true })
 
-  const minimumScore = parseIntSafe(
-    core.getInput('minimum-score'),
-    'minimum-score',
-    DEFAULT_CONFIG.minimumScore
-  )
+  // Parse thresholds - can be JSON or individual inputs
+  const thresholdsJson = core.getInput('thresholds')
+  let customThresholds: Partial<MetricThresholds> = {}
+
+  if (thresholdsJson) {
+    customThresholds = parseJSON<Partial<MetricThresholds>>(thresholdsJson, {})
+  }
+
+  // Individual threshold inputs override JSON
+  const prMergeRateInput = core.getInput('threshold-pr-merge-rate')
+  if (prMergeRateInput) {
+    customThresholds.prMergeRate = parseFloatSafe(
+      prMergeRateInput,
+      'threshold-pr-merge-rate',
+      DEFAULT_CONFIG.thresholds.prMergeRate
+    )
+  }
+
+  const accountAgeInput = core.getInput('threshold-account-age')
+  if (accountAgeInput) {
+    customThresholds.accountAge = parseIntSafe(
+      accountAgeInput,
+      'threshold-account-age',
+      DEFAULT_CONFIG.thresholds.accountAge
+    )
+  }
+
+  const negativeReactionsInput = core.getInput('threshold-negative-reactions')
+  if (negativeReactionsInput) {
+    customThresholds.negativeReactions = parseIntSafe(
+      negativeReactionsInput,
+      'threshold-negative-reactions',
+      DEFAULT_CONFIG.thresholds.negativeReactions
+    )
+  }
+
+  const thresholds = mergeThresholds(customThresholds)
+
+  // Parse required metrics
+  const requiredMetricsInput = core.getInput('required-metrics')
+  const requiredMetrics =
+    requiredMetricsInput !== undefined && requiredMetricsInput !== ''
+      ? parseList(requiredMetricsInput)
+      : DEFAULT_CONFIG.requiredMetrics
 
   const minimumStars = parseIntSafe(
     core.getInput('minimum-stars'),
@@ -138,21 +197,11 @@ export function parseInputs(): ContributorQualityConfig {
 
   const trustedOrgs = parseList(core.getInput('trusted-orgs'))
 
-  const onLowScore = validateLowScoreAction(
-    core.getInput('on-low-score') || DEFAULT_CONFIG.onLowScore
+  const onFail = validateFailAction(
+    core.getInput('on-fail') || DEFAULT_CONFIG.onFail
   )
 
   const labelName = core.getInput('label-name') || DEFAULT_CONFIG.labelName
-
-  const customWeights = parseJSON<Partial<MetricWeights>>(
-    core.getInput('weights'),
-    {}
-  )
-  const weights = mergeWeights(customWeights)
-
-  if (!validateWeights(weights)) {
-    core.warning('Metric weights do not sum to 1.0. Results may be skewed.')
-  }
 
   const dryRun = core.getInput('dry-run').toLowerCase() === 'true'
 
@@ -168,14 +217,14 @@ export function parseInputs(): ContributorQualityConfig {
 
   const config: ContributorQualityConfig = {
     githubToken,
-    minimumScore,
+    thresholds,
+    requiredMetrics,
     minimumStars,
     analysisWindowMonths,
     trustedUsers,
     trustedOrgs,
-    onLowScore,
+    onFail,
     labelName,
-    weights,
     dryRun,
     newAccountAction,
     newAccountThresholdDays

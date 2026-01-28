@@ -4,8 +4,8 @@
 import { describe, it, expect } from '@jest/globals'
 import {
   extractAccountData,
-  calculateAccountAgeMetric,
-  calculateActivityConsistencyMetric,
+  checkAccountAge,
+  checkActivityConsistency,
   isNewAccount
 } from '../../src/metrics/account-age.js'
 import type { GraphQLContributorData } from '../../src/types/github.js'
@@ -26,7 +26,11 @@ describe('Account Age Metric', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           },
-          issues: { totalCount: 0, nodes: [] },
+          issues: {
+            totalCount: 0,
+            nodes: [],
+            pageInfo: { hasNextPage: false, endCursor: null }
+          },
           contributionsCollection: {
             contributionCalendar: {
               totalContributions: 0,
@@ -34,7 +38,11 @@ describe('Account Age Metric', () => {
             },
             pullRequestReviewContributions: { totalCount: 0 }
           },
-          issueComments: { totalCount: 0, nodes: [] }
+          issueComments: {
+            totalCount: 0,
+            nodes: [],
+            pageInfo: { hasNextPage: false, endCursor: null }
+          }
         }
       }
 
@@ -58,7 +66,11 @@ describe('Account Age Metric', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           },
-          issues: { totalCount: 0, nodes: [] },
+          issues: {
+            totalCount: 0,
+            nodes: [],
+            pageInfo: { hasNextPage: false, endCursor: null }
+          },
           contributionsCollection: {
             contributionCalendar: {
               totalContributions: 100,
@@ -83,7 +95,11 @@ describe('Account Age Metric', () => {
             },
             pullRequestReviewContributions: { totalCount: 0 }
           },
-          issueComments: { totalCount: 0, nodes: [] }
+          issueComments: {
+            totalCount: 0,
+            nodes: [],
+            pageInfo: { hasNextPage: false, endCursor: null }
+          }
         }
       }
 
@@ -103,7 +119,11 @@ describe('Account Age Metric', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           },
-          issues: { totalCount: 0, nodes: [] },
+          issues: {
+            totalCount: 0,
+            nodes: [],
+            pageInfo: { hasNextPage: false, endCursor: null }
+          },
           contributionsCollection: {
             contributionCalendar: {
               totalContributions: 0,
@@ -111,7 +131,11 @@ describe('Account Age Metric', () => {
             },
             pullRequestReviewContributions: { totalCount: 0 }
           },
-          issueComments: { totalCount: 0, nodes: [] }
+          issueComments: {
+            totalCount: 0,
+            nodes: [],
+            pageInfo: { hasNextPage: false, endCursor: null }
+          }
         }
       }
 
@@ -122,8 +146,8 @@ describe('Account Age Metric', () => {
     })
   })
 
-  describe('calculateAccountAgeMetric', () => {
-    it('gives high score for established accounts (365+ days)', () => {
+  describe('checkAccountAge', () => {
+    it('passes for accounts above threshold', () => {
       const data: AccountData = {
         createdAt: new Date(Date.now() - 400 * 24 * 60 * 60 * 1000),
         ageInDays: 400,
@@ -132,57 +156,14 @@ describe('Account Age Metric', () => {
         consistencyScore: 0.83
       }
 
-      const result = calculateAccountAgeMetric(data, 0.1)
+      const result = checkAccountAge(data, 30)
 
-      expect(result.normalizedScore).toBe(100)
-      expect(result.details).toContain('Established account')
+      expect(result.passed).toBe(true)
+      expect(result.rawValue).toBe(400)
+      expect(result.threshold).toBe(30)
     })
 
-    it('gives good score for mature accounts (180-365 days)', () => {
-      const data: AccountData = {
-        createdAt: new Date(Date.now() - 200 * 24 * 60 * 60 * 1000),
-        ageInDays: 200,
-        monthsWithActivity: 6,
-        totalMonthsInWindow: 12,
-        consistencyScore: 0.5
-      }
-
-      const result = calculateAccountAgeMetric(data, 0.1)
-
-      expect(result.normalizedScore).toBe(75)
-      expect(result.details).toContain('Mature account')
-    })
-
-    it('gives moderate score for accounts 90-180 days', () => {
-      const data: AccountData = {
-        createdAt: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000),
-        ageInDays: 120,
-        monthsWithActivity: 3,
-        totalMonthsInWindow: 12,
-        consistencyScore: 0.25
-      }
-
-      const result = calculateAccountAgeMetric(data, 0.1)
-
-      expect(result.normalizedScore).toBe(60)
-    })
-
-    it('gives slight bonus for accounts 30-90 days', () => {
-      const data: AccountData = {
-        createdAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
-        ageInDays: 60,
-        monthsWithActivity: 2,
-        totalMonthsInWindow: 12,
-        consistencyScore: 0.17
-      }
-
-      const result = calculateAccountAgeMetric(data, 0.1)
-
-      expect(result.normalizedScore).toBe(55)
-      expect(result.details).toContain('Recent account')
-    })
-
-    it('gives neutral score for new accounts (<30 days)', () => {
+    it('fails for new accounts below threshold', () => {
       const data: AccountData = {
         createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
         ageInDays: 10,
@@ -191,13 +172,27 @@ describe('Account Age Metric', () => {
         consistencyScore: 0.08
       }
 
-      const result = calculateAccountAgeMetric(data, 0.1)
+      const result = checkAccountAge(data, 30)
 
-      expect(result.normalizedScore).toBe(50)
-      expect(result.details).toContain('New account')
+      expect(result.passed).toBe(false)
+      expect(result.rawValue).toBe(10)
     })
 
-    it('applies weight correctly', () => {
+    it('passes for accounts exactly at threshold', () => {
+      const data: AccountData = {
+        createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        ageInDays: 30,
+        monthsWithActivity: 1,
+        totalMonthsInWindow: 12,
+        consistencyScore: 0.08
+      }
+
+      const result = checkAccountAge(data, 30)
+
+      expect(result.passed).toBe(true)
+    })
+
+    it('formats details correctly for established accounts', () => {
       const data: AccountData = {
         createdAt: new Date(Date.now() - 400 * 24 * 60 * 60 * 1000),
         ageInDays: 400,
@@ -206,16 +201,14 @@ describe('Account Age Metric', () => {
         consistencyScore: 0.83
       }
 
-      const result = calculateAccountAgeMetric(data, 0.15)
+      const result = checkAccountAge(data, 30)
 
-      expect(result.normalizedScore).toBe(100)
-      expect(result.weightedScore).toBe(15) // 100 * 0.15
-      expect(result.weight).toBe(0.15)
+      expect(result.details).toContain('year')
     })
   })
 
-  describe('calculateActivityConsistencyMetric', () => {
-    it('gives high score for very consistent activity (90%+)', () => {
+  describe('checkActivityConsistency', () => {
+    it('passes for consistent activity above threshold', () => {
       const data: AccountData = {
         createdAt: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
         ageInDays: 365,
@@ -224,43 +217,13 @@ describe('Account Age Metric', () => {
         consistencyScore: 0.92
       }
 
-      const result = calculateActivityConsistencyMetric(data, 0.1)
+      const result = checkActivityConsistency(data, 0.5)
 
-      expect(result.normalizedScore).toBe(100)
-      expect(result.details).toContain('Very consistent')
+      expect(result.passed).toBe(true)
+      expect(result.rawValue).toBeCloseTo(0.92, 2)
     })
 
-    it('gives good score for consistent activity (70-90%)', () => {
-      const data: AccountData = {
-        createdAt: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
-        ageInDays: 365,
-        monthsWithActivity: 9,
-        totalMonthsInWindow: 12,
-        consistencyScore: 0.75
-      }
-
-      const result = calculateActivityConsistencyMetric(data, 0.1)
-
-      expect(result.normalizedScore).toBe(85)
-      expect(result.details).toContain('Consistent')
-    })
-
-    it('gives moderate score for moderate consistency (50-70%)', () => {
-      const data: AccountData = {
-        createdAt: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
-        ageInDays: 365,
-        monthsWithActivity: 7,
-        totalMonthsInWindow: 12,
-        consistencyScore: 0.58
-      }
-
-      const result = calculateActivityConsistencyMetric(data, 0.1)
-
-      expect(result.normalizedScore).toBe(70)
-      expect(result.details).toContain('Moderate consistency')
-    })
-
-    it('gives neutral score for sparse activity', () => {
+    it('fails for sparse activity below threshold', () => {
       const data: AccountData = {
         createdAt: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
         ageInDays: 365,
@@ -269,26 +232,23 @@ describe('Account Age Metric', () => {
         consistencyScore: 0.17
       }
 
-      const result = calculateActivityConsistencyMetric(data, 0.1)
+      const result = checkActivityConsistency(data, 0.5)
 
-      expect(result.normalizedScore).toBe(50)
-      expect(result.details).toContain('Sparse activity')
+      expect(result.passed).toBe(false)
     })
 
-    it('gives neutral score for accounts too new to evaluate', () => {
-      // Account with 0 days means effectiveMonths = 0, triggering "too new"
+    it('passes with threshold of 0', () => {
       const data: AccountData = {
-        createdAt: new Date(),
-        ageInDays: 0,
+        createdAt: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
+        ageInDays: 365,
         monthsWithActivity: 0,
         totalMonthsInWindow: 12,
         consistencyScore: 0
       }
 
-      const result = calculateActivityConsistencyMetric(data, 0.1)
+      const result = checkActivityConsistency(data, 0)
 
-      expect(result.normalizedScore).toBe(50)
-      expect(result.details).toContain('too new')
+      expect(result.passed).toBe(true)
     })
   })
 
