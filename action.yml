@@ -1,0 +1,101 @@
+name: 'Contributor Quality'
+description:
+  'Evaluate PR contributor quality using objective GitHub metrics to combat
+  AI-generated spam'
+author: 'Diego Sierra'
+
+branding:
+  icon: 'user-check'
+  color: 'blue'
+
+inputs:
+  github-token:
+    description: 'GitHub token for API access'
+    required: true
+    default: ${{ github.token }}
+
+  minimum-score:
+    description: 'Minimum score to pass (0-1000)'
+    required: false
+    default: '300'
+
+  minimum-stars:
+    description: 'Minimum stars for a repo to be considered quality'
+    required: false
+    default: '100'
+
+  analysis-window:
+    description: 'Months of history to analyze'
+    required: false
+    default: '12'
+
+  trusted-users:
+    description: 'Comma-separated list of usernames to always pass'
+    required: false
+    default: 'dependabot[bot],renovate[bot],github-actions[bot],codecov[bot],sonarcloud[bot]'
+
+  trusted-orgs:
+    description:
+      'Comma-separated list of organizations whose members always pass'
+    required: false
+    default: ''
+
+  on-low-score:
+    description:
+      'Action when score is below threshold: comment, label, fail,
+      comment-and-label, none'
+    required: false
+    default: 'comment'
+
+  label-name:
+    description: 'Label to apply when on-low-score includes label'
+    required: false
+    default: 'needs-review'
+
+  weights:
+    description: 'JSON object with custom metric weights'
+    required: false
+    default: '{}'
+
+  dry-run:
+    description: 'Log results without taking action'
+    required: false
+    default: 'false'
+
+  new-account-action:
+    description:
+      'Behavior for accounts younger than threshold: neutral, require-review,
+      block'
+    required: false
+    default: 'neutral'
+
+  new-account-threshold-days:
+    description: 'Days to consider an account as new'
+    required: false
+    default: '30'
+
+outputs:
+  score:
+    description: 'Contributor quality score (0-1000)'
+
+  passed:
+    description: 'Whether the contributor passed the minimum threshold'
+
+  breakdown:
+    description: 'JSON breakdown of individual metric scores'
+
+  recommendations:
+    description: 'JSON array of recommendations for the contributor'
+
+  is-new-account:
+    description: 'Whether the account is less than the threshold days old'
+
+  has-limited-data:
+    description: 'Whether there was limited data for analysis'
+
+  was-whitelisted:
+    description: 'Whether the user was on the trusted list'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'

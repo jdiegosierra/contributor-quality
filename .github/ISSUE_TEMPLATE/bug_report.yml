@@ -1,0 +1,86 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+labels: ['bug', 'triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe the bug...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Configure action with...
+        2. Open a PR from...
+        3. See error...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What you expected to happen
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Action Configuration
+      description: Your workflow configuration (remove sensitive data)
+      render: yaml
+      placeholder: |
+        - uses: jdiegosierra/contributor-quality@v1
+          with:
+            github-token: ${{ secrets.GITHUB_TOKEN }}
+            minimum-score: '300'
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant logs from the action run
+      render: shell
+
+  - type: dropdown
+    id: version
+    attributes:
+      label: Action Version
+      description: Which version of the action are you using?
+      options:
+        - v1 (latest)
+        - main branch
+        - Other (specify in description)
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched for existing issues that describe this bug
+          required: true
+        - label: I have checked the documentation
+          required: true
