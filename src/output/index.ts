@@ -12,5 +12,7 @@ export {
   formatActionOutput,
   setActionOutputs,
   setWhitelistOutputs,
-  logResultSummary
+  logResultSummary,
+  writeJobSummary,
+  writeWhitelistSummary
 } from './formatter.js'

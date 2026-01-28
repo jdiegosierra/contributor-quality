@@ -36826,6 +36826,63 @@ function logResultSummary(result) {
     coreExports.info(`Total data points: ${result.totalDataPoints}`);
     coreExports.info(`Decay factor: ${(result.decayFactor * 100).toFixed(0)}%`);
 }
+/**
+ * Write scoring result to GitHub Job Summary
+ */
+async function writeJobSummary(result, username) {
+    const statusEmoji = result.passed ? '✅' : '⚠️';
+    const statusText = result.passed ? 'Passed' : 'Needs Review';
+    await coreExports.summary
+        .addHeading('Contributor Quality Analysis', 2)
+        .addTable([
+        [
+            { data: 'Contributor', header: true },
+            { data: 'Score', header: true },
+            { data: 'Status', header: true },
+            { data: 'Threshold', header: true }
+        ],
+        [
+            `@${username}`,
+            `**${result.score}**/1000`,
+            `${statusEmoji} ${statusText}`,
+            `${result.threshold}`
+        ]
+    ])
+        .addHeading('Metric Breakdown', 3)
+        .addTable([
+        [
+            { data: 'Metric', header: true },
+            { data: 'Score', header: true },
+            { data: 'Weight', header: true },
+            { data: 'Details', header: true }
+        ],
+        ...result.metrics.map((m) => [
+            m.name,
+            `${m.normalizedScore}/100`,
+            `${(m.weight * 100).toFixed(0)}%`,
+            m.details || '-'
+        ])
+    ])
+        .addRaw(`\n**Analysis Period:** ${result.dataWindowStart.toISOString().split('T')[0]} to ${result.dataWindowEnd.toISOString().split('T')[0]}\n`)
+        .addRaw(`**Data Points:** ${result.totalDataPoints}\n`)
+        .addRaw(`**Activity Decay Factor:** ${(result.decayFactor * 100).toFixed(0)}%\n`)
+        .write();
+    if (result.recommendations.length > 0) {
+        await coreExports.summary
+            .addHeading('Recommendations', 3)
+            .addList(result.recommendations)
+            .write();
+    }
+}
+/**
+ * Write whitelisted user summary to GitHub Job Summary
+ */
+async function writeWhitelistSummary(username) {
+    await coreExports.summary
+        .addHeading('Contributor Quality Analysis', 2)
+        .addRaw(`✅ **@${username}** is a trusted contributor and was automatically approved.\n`)
+        .write();
+}
 
 /**
  * Main entry point for the Contributor Quality GitHub Action
@@ -36849,6 +36906,7 @@ async function run() {
         if (config.trustedUsers.includes(username)) {
             coreExports.info(`User ${username} is in trusted users list, skipping analysis`);
             setWhitelistOutputs(username);
+            await writeWhitelistSummary(username);
             if (!config.dryRun && config.onLowScore !== 'none') {
                 // Optionally comment about whitelist status
                 coreExports.debug('User is whitelisted, no comment needed');
@@ -36863,6 +36921,7 @@ async function run() {
             if (isMember) {
                 coreExports.info(`User ${username} is member of a trusted organization, skipping analysis`);
                 setWhitelistOutputs(username);
+                await writeWhitelistSummary(username);
                 return;
             }
         }
@@ -36878,6 +36937,8 @@ async function run() {
         const result = calculateScore(contributorData, config, sinceDate);
         // Log results
         logResultSummary(result);
+        // Write Job Summary
+        await writeJobSummary(result, username);
         // Set outputs
         setActionOutputs(result);
         // Handle new account action

@@ -10,7 +10,9 @@ import {
   generateLowScoreComment,
   setActionOutputs,
   setWhitelistOutputs,
-  logResultSummary
+  logResultSummary,
+  writeJobSummary,
+  writeWhitelistSummary
 } from './output/index.js'
 import type { ScoringResult } from './types/scoring.js'
 
@@ -38,6 +40,7 @@ export async function run(): Promise<void> {
     if (config.trustedUsers.includes(username)) {
       core.info(`User ${username} is in trusted users list, skipping analysis`)
       setWhitelistOutputs(username)
+      await writeWhitelistSummary(username)
 
       if (!config.dryRun && config.onLowScore !== 'none') {
         // Optionally comment about whitelist status
@@ -60,6 +63,7 @@ export async function run(): Promise<void> {
           `User ${username} is member of a trusted organization, skipping analysis`
         )
         setWhitelistOutputs(username)
+        await writeWhitelistSummary(username)
         return
       }
     }
@@ -84,6 +88,9 @@ export async function run(): Promise<void> {
 
     // Log results
     logResultSummary(result)
+
+    // Write Job Summary
+    await writeJobSummary(result, username)
 
     // Set outputs
     setActionOutputs(result)
