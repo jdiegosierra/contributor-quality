@@ -207,7 +207,6 @@ export function evaluateContributor(
     analyzedAt: now,
     dataWindowStart: sinceDate,
     dataWindowEnd: now,
-    totalDataPoints,
     recommendations,
     isNewAccount: accountIsNew,
     hasLimitedData,

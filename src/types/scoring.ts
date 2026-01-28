@@ -33,9 +33,6 @@ export interface AnalysisResult {
   /** End of analysis window */
   dataWindowEnd: Date
 
-  /** Total data points analyzed */
-  totalDataPoints: number
-
   /** Actionable recommendations */
   recommendations: string[]
 

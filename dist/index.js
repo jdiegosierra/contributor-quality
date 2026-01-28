@@ -36420,7 +36420,6 @@ function evaluateContributor(data, config, sinceDate) {
         analyzedAt: now,
         dataWindowStart: sinceDate,
         dataWindowEnd: now,
-        totalDataPoints,
         recommendations,
         isNewAccount: accountIsNew,
         hasLimitedData,
@@ -36469,7 +36468,7 @@ function generateAnalysisComment(result, config) {
         const statusIcon = metric.passed ? '✅' : '❌';
         const formattedValue = formatMetricValue(metric);
         const formattedThreshold = formatThreshold(metric);
-        lines.push(`| ${formatMetricName(metric.name)} | ${formattedValue} | ${formattedThreshold} | ${statusIcon} |`);
+        lines.push(`| ${formatMetricName$1(metric.name)} | ${formattedValue} | ${formattedThreshold} | ${statusIcon} |`);
     }
     lines.push('');
     // Recommendations (only if there are failed metrics)
@@ -36537,7 +36536,7 @@ function formatThreshold(metric) {
 /**
  * Format metric name for display
  */
-function formatMetricName(name) {
+function formatMetricName$1(name) {
     const nameMap = {
         prMergeRate: 'PR Merge Rate',
         repoQuality: 'Repo Quality',
@@ -36625,6 +36624,7 @@ function logResultSummary(result) {
     coreExports.info('');
     coreExports.info(`  User:      @${result.username}`);
     coreExports.info(`  Status:    ${result.passed ? '✓ PASSED' : '✗ NEEDS REVIEW'} (${result.passedCount}/${result.totalMetrics} metrics)`);
+    coreExports.info(`  Period:    ${result.dataWindowStart.toISOString().split('T')[0]} to ${result.dataWindowEnd.toISOString().split('T')[0]}`);
     coreExports.info('');
     coreExports.info('┌──────────────────────────────────────────────────────────────────────────────────────┐');
     coreExports.info('│ Metric               │ Value          │ Threshold      │ Status  │ Details          │');
@@ -36650,8 +36650,6 @@ function logResultSummary(result) {
         }
     }
     coreExports.info('');
-    coreExports.info(`Analysis: ${result.dataWindowStart.toISOString().split('T')[0]} to ${result.dataWindowEnd.toISOString().split('T')[0]} | Data points: ${result.totalDataPoints}`);
-    coreExports.info('');
 }
 /**
  * Write analysis result to GitHub Job Summary
@@ -36659,22 +36657,19 @@ function logResultSummary(result) {
 async function writeJobSummary(result) {
     const statusEmoji = result.passed ? '✅' : '⚠️';
     const statusText = result.passed ? 'Passed' : 'Needs Review';
-    await coreExports.summary
-        .addHeading('Contributor Quality Analysis', 2)
-        .addTable([
-        [
-            { data: 'Contributor', header: true },
-            { data: 'Status', header: true },
-            { data: 'Metrics Passed', header: true }
-        ],
-        [
-            `@${result.username}`,
-            `${statusEmoji} ${statusText}`,
-            `${result.passedCount}/${result.totalMetrics}`
-        ]
-    ])
-        .addHeading('Metric Results', 3)
-        .addTable([
+    coreExports.summary
+        .addHeading(`${statusEmoji} Contributor Quality Check`, 2)
+        .addRaw(`**User:** @${result.username}\n\n`)
+        .addRaw(`**Status:** ${statusText} (${result.passedCount}/${result.totalMetrics} metrics passed)\n\n`);
+    // Add note for new accounts
+    if (result.isNewAccount) {
+        coreExports.summary.addRaw(`> **Note:** This is a new GitHub account. Limited history is available for evaluation.\n\n`);
+    }
+    // Add note for limited data
+    if (result.hasLimitedData && !result.isNewAccount) {
+        coreExports.summary.addRaw(`> **Note:** Limited contribution data available. Results may be affected.\n\n`);
+    }
+    coreExports.summary.addHeading('Metric Results', 3).addTable([
         [
             { data: 'Metric', header: true },
             { data: 'Value', header: true },
@@ -36682,21 +36677,38 @@ async function writeJobSummary(result) {
             { data: 'Status', header: true }
         ],
         ...result.metrics.map((m) => [
-            m.name,
+            formatMetricName(m.name),
             formatValueForLog(m),
             formatThresholdForLog(m),
-            m.passed ? '✅ Pass' : '❌ Fail'
+            m.passed ? '✅' : '❌'
         ])
-    ])
-        .addRaw(`\n**Analysis Period:** ${result.dataWindowStart.toISOString().split('T')[0]} to ${result.dataWindowEnd.toISOString().split('T')[0]}\n`)
-        .addRaw(`**Data Points:** ${result.totalDataPoints}\n`)
-        .write();
-    if (result.recommendations.length > 0) {
-        await coreExports.summary
+    ]);
+    // Recommendations (only if there are failed metrics)
+    if (result.recommendations.length > 0 && !result.passed) {
+        coreExports.summary
             .addHeading('Recommendations', 3)
-            .addList(result.recommendations)
-            .write();
+            .addList(result.recommendations);
     }
+    await coreExports.summary
+        .addRaw(`\n---\n`)
+        .addRaw(`<sub>Analysis period: ${result.dataWindowStart.toISOString().split('T')[0]} to ${result.dataWindowEnd.toISOString().split('T')[0]}</sub>\n`)
+        .write();
+}
+/**
+ * Format metric name for display
+ */
+function formatMetricName(name) {
+    const nameMap = {
+        prMergeRate: 'PR Merge Rate',
+        repoQuality: 'Repo Quality',
+        positiveReactions: 'Positive Reactions',
+        negativeReactions: 'Negative Reactions',
+        accountAge: 'Account Age',
+        activityConsistency: 'Activity Consistency',
+        issueEngagement: 'Issue Engagement',
+        codeReviews: 'Code Reviews'
+    };
+    return nameMap[name] || name;
 }
 /**
  * Write whitelisted user summary to GitHub Job Summary
@@ -36789,7 +36801,7 @@ async function run() {
         const sinceDate = new Date(now);
         sinceDate.setMonth(sinceDate.getMonth() - config.analysisWindowMonths);
         // Fetch contributor data
-        coreExports.info(`Fetching contributor data from ${sinceDate.toISOString().split('T')[0]} to now`);
+        coreExports.info(`Analysis window: ${config.analysisWindowMonths} months (${sinceDate.toISOString().split('T')[0]} to ${now.toISOString().split('T')[0]})`);
         const contributorData = await client.fetchContributorData(username, sinceDate);
         // Evaluate contributor against thresholds
         coreExports.info('Evaluating contributor metrics...');

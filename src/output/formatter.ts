@@ -125,10 +125,6 @@ export function logResultSummary(result: AnalysisResult): void {
   }
 
   core.info('')
-  core.info(
-    `Analysis: ${result.dataWindowStart.toISOString().split('T')[0]} to ${result.dataWindowEnd.toISOString().split('T')[0]} | Data points: ${result.totalDataPoints}`
-  )
-  core.info('')
 }
 
 /**
@@ -138,47 +134,72 @@ export async function writeJobSummary(result: AnalysisResult): Promise<void> {
   const statusEmoji = result.passed ? '✅' : '⚠️'
   const statusText = result.passed ? 'Passed' : 'Needs Review'
 
-  await core.summary
-    .addHeading('Contributor Quality Analysis', 2)
-    .addTable([
-      [
-        { data: 'Contributor', header: true },
-        { data: 'Status', header: true },
-        { data: 'Metrics Passed', header: true }
-      ],
-      [
-        `@${result.username}`,
-        `${statusEmoji} ${statusText}`,
-        `${result.passedCount}/${result.totalMetrics}`
-      ]
-    ])
-    .addHeading('Metric Results', 3)
-    .addTable([
-      [
-        { data: 'Metric', header: true },
-        { data: 'Value', header: true },
-        { data: 'Threshold', header: true },
-        { data: 'Status', header: true }
-      ],
-      ...result.metrics.map((m) => [
-        m.name,
-        formatValueForLog(m),
-        formatThresholdForLog(m),
-        m.passed ? '✅ Pass' : '❌ Fail'
-      ])
-    ])
+  core.summary
+    .addHeading(`${statusEmoji} Contributor Quality Check`, 2)
+    .addRaw(`**User:** @${result.username}\n\n`)
     .addRaw(
-      `\n**Analysis Period:** ${result.dataWindowStart.toISOString().split('T')[0]} to ${result.dataWindowEnd.toISOString().split('T')[0]}\n`
+      `**Status:** ${statusText} (${result.passedCount}/${result.totalMetrics} metrics passed)\n\n`
     )
-    .addRaw(`**Data Points:** ${result.totalDataPoints}\n`)
-    .write()
 
-  if (result.recommendations.length > 0) {
-    await core.summary
+  // Add note for new accounts
+  if (result.isNewAccount) {
+    core.summary.addRaw(
+      `> **Note:** This is a new GitHub account. Limited history is available for evaluation.\n\n`
+    )
+  }
+
+  // Add note for limited data
+  if (result.hasLimitedData && !result.isNewAccount) {
+    core.summary.addRaw(
+      `> **Note:** Limited contribution data available. Results may be affected.\n\n`
+    )
+  }
+
+  core.summary.addHeading('Metric Results', 3).addTable([
+    [
+      { data: 'Metric', header: true },
+      { data: 'Value', header: true },
+      { data: 'Threshold', header: true },
+      { data: 'Status', header: true }
+    ],
+    ...result.metrics.map((m) => [
+      formatMetricName(m.name),
+      formatValueForLog(m),
+      formatThresholdForLog(m),
+      m.passed ? '✅' : '❌'
+    ])
+  ])
+
+  // Recommendations (only if there are failed metrics)
+  if (result.recommendations.length > 0 && !result.passed) {
+    core.summary
       .addHeading('Recommendations', 3)
       .addList(result.recommendations)
-      .write()
   }
+
+  await core.summary
+    .addRaw(`\n---\n`)
+    .addRaw(
+      `<sub>Analysis period: ${result.dataWindowStart.toISOString().split('T')[0]} to ${result.dataWindowEnd.toISOString().split('T')[0]}</sub>\n`
+    )
+    .write()
+}
+
+/**
+ * Format metric name for display
+ */
+function formatMetricName(name: string): string {
+  const nameMap: Record<string, string> = {
+    prMergeRate: 'PR Merge Rate',
+    repoQuality: 'Repo Quality',
+    positiveReactions: 'Positive Reactions',
+    negativeReactions: 'Negative Reactions',
+    accountAge: 'Account Age',
+    activityConsistency: 'Activity Consistency',
+    issueEngagement: 'Issue Engagement',
+    codeReviews: 'Code Reviews'
+  }
+  return nameMap[name] || name
 }
 
 /**
