@@ -49,7 +49,11 @@ query ContributorAnalysis($username: String!, $since: DateTime!, $prCursor: Stri
       nodes {
         createdAt
         comments { totalCount }
-        reactions { totalCount }
+        reactions(first: 20) {
+          nodes {
+            content
+          }
+        }
       }
       pageInfo {
         hasNextPage

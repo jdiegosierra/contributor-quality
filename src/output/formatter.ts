@@ -136,9 +136,8 @@ export async function writeJobSummary(result: AnalysisResult): Promise<void> {
 
   core.summary
     .addHeading(`${statusEmoji} Contributor Quality Check`, 2)
-    .addRaw(`**User:** @${result.username}\n\n`)
     .addRaw(
-      `**Status:** ${statusText} (${result.passedCount}/${result.totalMetrics} metrics passed)\n\n`
+      `\n**User:** @${result.username}\n\n**Status:** ${statusText} (${result.passedCount}/${result.totalMetrics} metrics passed)\n\n`
     )
 
   // Add note for new accounts

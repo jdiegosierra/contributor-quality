@@ -159,6 +159,15 @@ export function parseInputs(): ContributorQualityConfig {
     )
   }
 
+  const positiveReactionsInput = core.getInput('threshold-positive-reactions')
+  if (positiveReactionsInput) {
+    customThresholds.positiveReactions = parseIntSafe(
+      positiveReactionsInput,
+      'threshold-positive-reactions',
+      DEFAULT_CONFIG.thresholds.positiveReactions
+    )
+  }
+
   const negativeReactionsInput = core.getInput('threshold-negative-reactions')
   if (negativeReactionsInput) {
     customThresholds.negativeReactions = parseIntSafe(

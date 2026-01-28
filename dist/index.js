@@ -31299,6 +31299,10 @@ function parseInputs() {
     if (accountAgeInput) {
         customThresholds.accountAge = parseIntSafe(accountAgeInput, 'threshold-account-age', DEFAULT_CONFIG.thresholds.accountAge);
     }
+    const positiveReactionsInput = coreExports.getInput('threshold-positive-reactions');
+    if (positiveReactionsInput) {
+        customThresholds.positiveReactions = parseIntSafe(positiveReactionsInput, 'threshold-positive-reactions', DEFAULT_CONFIG.thresholds.positiveReactions);
+    }
     const negativeReactionsInput = coreExports.getInput('threshold-negative-reactions');
     if (negativeReactionsInput) {
         customThresholds.negativeReactions = parseIntSafe(negativeReactionsInput, 'threshold-negative-reactions', DEFAULT_CONFIG.thresholds.negativeReactions);
@@ -35267,7 +35271,11 @@ query ContributorAnalysis($username: String!, $since: DateTime!, $prCursor: Stri
       nodes {
         createdAt
         comments { totalCount }
-        reactions { totalCount }
+        reactions(first: 20) {
+          nodes {
+            content
+          }
+        }
       }
       pageInfo {
         hasNextPage
@@ -35985,14 +35993,32 @@ const NEGATIVE_REACTIONS = ['-1', 'confused'];
  */
 /**
  * Extract reaction data from GraphQL response
+ * Counts reactions from both issue comments and issues created by the user
  */
 function extractReactionData(data) {
     const comments = data.user.issueComments.nodes;
+    const issues = data.user.issues.nodes;
     let positiveCount = 0;
     let negativeCount = 0;
     let neutralCount = 0;
+    // Count reactions from comments
     for (const comment of comments) {
         for (const reaction of comment.reactions.nodes) {
+            const content = reaction.content;
+            if (POSITIVE_REACTIONS.includes(content)) {
+                positiveCount++;
+            }
+            else if (NEGATIVE_REACTIONS.includes(content)) {
+                negativeCount++;
+            }
+            else {
+                neutralCount++;
+            }
+        }
+    }
+    // Count reactions from issues created by the user
+    for (const issue of issues) {
+        for (const reaction of issue.reactions.nodes) {
             const content = reaction.content;
             if (POSITIVE_REACTIONS.includes(content)) {
                 positiveCount++;
@@ -36008,7 +36034,7 @@ function extractReactionData(data) {
     const totalReactions = positiveCount + negativeCount + neutralCount;
     const positiveRatio = totalReactions > 0 ? positiveCount / totalReactions : 0.5;
     return {
-        totalComments: comments.length,
+        totalComments: comments.length + issues.length,
         positiveReactions: positiveCount,
         negativeReactions: negativeCount,
         neutralReactions: neutralCount,
@@ -36659,8 +36685,7 @@ async function writeJobSummary(result) {
     const statusText = result.passed ? 'Passed' : 'Needs Review';
     coreExports.summary
         .addHeading(`${statusEmoji} Contributor Quality Check`, 2)
-        .addRaw(`**User:** @${result.username}\n\n`)
-        .addRaw(`**Status:** ${statusText} (${result.passedCount}/${result.totalMetrics} metrics passed)\n\n`);
+        .addRaw(`\n**User:** @${result.username}\n\n**Status:** ${statusText} (${result.passedCount}/${result.totalMetrics} metrics passed)\n\n`);
     // Add note for new accounts
     if (result.isNewAccount) {
         coreExports.summary.addRaw(`> **Note:** This is a new GitHub account. Limited history is available for evaluation.\n\n`);

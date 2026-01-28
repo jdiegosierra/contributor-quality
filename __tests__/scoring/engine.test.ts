@@ -58,7 +58,13 @@ describe('Evaluation Engine', () => {
               {
                 createdAt: new Date().toISOString(),
                 comments: { totalCount: 3 },
-                reactions: { totalCount: 5 }
+                reactions: {
+                  nodes: [
+                    { content: '+1' },
+                    { content: 'heart' },
+                    { content: '+1' }
+                  ]
+                }
               }
             ],
             pageInfo: { hasNextPage: false, endCursor: null }

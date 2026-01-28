@@ -27,6 +27,10 @@ inputs:
     description: 'Minimum account age in days'
     required: false
 
+  threshold-positive-reactions:
+    description: 'Minimum positive reactions required'
+    required: false
+
   threshold-negative-reactions:
     description: 'Maximum negative reactions allowed'
     required: false

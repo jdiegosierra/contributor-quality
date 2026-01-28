@@ -125,7 +125,11 @@ export interface GraphQLContributorData {
       nodes: Array<{
         createdAt: string
         comments: { totalCount: number }
-        reactions: { totalCount: number }
+        reactions: {
+          nodes: Array<{
+            content: GitHubReactionContent
+          }>
+        }
       }>
       pageInfo: {
         hasNextPage: boolean

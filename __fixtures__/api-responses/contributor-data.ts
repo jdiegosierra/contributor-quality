@@ -103,14 +103,23 @@ export const qualityContributorResponse: GraphQLContributorData = {
             Date.now() - 14 * 24 * 60 * 60 * 1000
           ).toISOString(),
           comments: { totalCount: 5 },
-          reactions: { totalCount: 8 }
+          reactions: {
+            nodes: [
+              { content: '+1' as const },
+              { content: 'heart' as const },
+              { content: '+1' as const },
+              { content: 'rocket' as const }
+            ]
+          }
         },
         {
           createdAt: new Date(
             Date.now() - 60 * 24 * 60 * 60 * 1000
           ).toISOString(),
           comments: { totalCount: 3 },
-          reactions: { totalCount: 2 }
+          reactions: {
+            nodes: [{ content: '+1' as const }, { content: 'heart' as const }]
+          }
         }
       ],
       pageInfo: { hasNextPage: false, endCursor: null }

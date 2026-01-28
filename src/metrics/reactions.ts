@@ -11,18 +11,44 @@ import { POSITIVE_REACTIONS, NEGATIVE_REACTIONS } from '../types/metrics.js'
 
 /**
  * Extract reaction data from GraphQL response
+ * Counts reactions from both issue comments and issues created by the user
  */
 export function extractReactionData(
   data: GraphQLContributorData
 ): ReactionData {
   const comments = data.user.issueComments.nodes
+  const issues = data.user.issues.nodes
 
   let positiveCount = 0
   let negativeCount = 0
   let neutralCount = 0
 
+  // Count reactions from comments
   for (const comment of comments) {
     for (const reaction of comment.reactions.nodes) {
+      const content = reaction.content as GitHubReactionContent
+
+      if (
+        POSITIVE_REACTIONS.includes(
+          content as (typeof POSITIVE_REACTIONS)[number]
+        )
+      ) {
+        positiveCount++
+      } else if (
+        NEGATIVE_REACTIONS.includes(
+          content as (typeof NEGATIVE_REACTIONS)[number]
+        )
+      ) {
+        negativeCount++
+      } else {
+        neutralCount++
+      }
+    }
+  }
+
+  // Count reactions from issues created by the user
+  for (const issue of issues) {
+    for (const reaction of issue.reactions.nodes) {
       const content = reaction.content as GitHubReactionContent
 
       if (
@@ -48,7 +74,7 @@ export function extractReactionData(
     totalReactions > 0 ? positiveCount / totalReactions : 0.5
 
   return {
-    totalComments: comments.length,
+    totalComments: comments.length + issues.length,
     positiveReactions: positiveCount,
     negativeReactions: negativeCount,
     neutralReactions: neutralCount,
