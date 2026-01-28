@@ -86,7 +86,7 @@ export async function run(): Promise<void> {
 
     // Fetch contributor data
     core.info(
-      `Fetching contributor data from ${sinceDate.toISOString().split('T')[0]} to now`
+      `Analysis window: ${config.analysisWindowMonths} months (${sinceDate.toISOString().split('T')[0]} to ${now.toISOString().split('T')[0]})`
     )
     const contributorData = await client.fetchContributorData(
       username,

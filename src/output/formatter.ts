@@ -83,6 +83,9 @@ export function logResultSummary(result: AnalysisResult): void {
   core.info(
     `  Status:    ${result.passed ? '✓ PASSED' : '✗ NEEDS REVIEW'} (${result.passedCount}/${result.totalMetrics} metrics)`
   )
+  core.info(
+    `  Period:    ${result.dataWindowStart.toISOString().split('T')[0]} to ${result.dataWindowEnd.toISOString().split('T')[0]}`
+  )
   core.info('')
 
   core.info(
