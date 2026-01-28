@@ -36804,27 +36804,42 @@ function setWhitelistOutputs(username) {
  * Log scoring result summary
  */
 function logResultSummary(result) {
-    coreExports.info('='.repeat(50));
-    coreExports.info(`Contributor Quality Score: ${result.score}/1000`);
-    coreExports.info(`Status: ${result.passed ? 'PASSED' : 'FAILED'}`);
-    coreExports.info(`Threshold: ${result.threshold}`);
-    coreExports.info('='.repeat(50));
     coreExports.info('');
-    coreExports.info('Metric Breakdown:');
+    coreExports.info('╔══════════════════════════════════════════════════╗');
+    coreExports.info('║         CONTRIBUTOR QUALITY ANALYSIS             ║');
+    coreExports.info('╚══════════════════════════════════════════════════╝');
+    coreExports.info('');
+    coreExports.info(`  Score:     ${result.score}/1000`);
+    coreExports.info(`  Status:    ${result.passed ? '✓ PASSED' : '✗ NEEDS REVIEW'}`);
+    coreExports.info(`  Threshold: ${result.threshold}`);
+    coreExports.info('');
+    coreExports.info('┌─────────────────────────────────────────────────────────────────────────────────┐');
+    coreExports.info('│ Metric               │ Score  │ Weight │ Contribution │ Details                │');
+    coreExports.info('├─────────────────────────────────────────────────────────────────────────────────┤');
+    let totalContribution = 0;
     for (const metric of result.metrics) {
-        coreExports.info(`  ${metric.name}: ${metric.normalizedScore}/100 (${metric.details})`);
+        const contribution = (metric.normalizedScore * metric.weight) / 10;
+        totalContribution += contribution;
+        const name = metric.name.padEnd(20);
+        const score = `${metric.normalizedScore}/100`.padEnd(6);
+        const weight = `${(metric.weight * 100).toFixed(0)}%`.padEnd(6);
+        const contrib = contribution.toFixed(1).padStart(5);
+        const details = (metric.details || '-').substring(0, 22).padEnd(22);
+        coreExports.info(`│ ${name} │ ${score} │ ${weight} │ ${contrib} pts    │ ${details} │`);
     }
+    coreExports.info('├─────────────────────────────────────────────────────────────────────────────────┤');
+    coreExports.info(`│ TOTAL                │        │  100%  │ ${totalContribution.toFixed(1).padStart(5)} pts    │ × 10 = ${result.score} score     │`);
+    coreExports.info('└─────────────────────────────────────────────────────────────────────────────────┘');
     if (result.recommendations.length > 0) {
         coreExports.info('');
         coreExports.info('Recommendations:');
         for (const rec of result.recommendations) {
-            coreExports.info(`  - ${rec}`);
+            coreExports.info(`  → ${rec}`);
         }
     }
     coreExports.info('');
-    coreExports.info(`Analysis window: ${result.dataWindowStart.toISOString().split('T')[0]} to ${result.dataWindowEnd.toISOString().split('T')[0]}`);
-    coreExports.info(`Total data points: ${result.totalDataPoints}`);
-    coreExports.info(`Decay factor: ${(result.decayFactor * 100).toFixed(0)}%`);
+    coreExports.info(`Analysis: ${result.dataWindowStart.toISOString().split('T')[0]} to ${result.dataWindowEnd.toISOString().split('T')[0]} | Data points: ${result.totalDataPoints} | Decay: ${(result.decayFactor * 100).toFixed(0)}%`);
+    coreExports.info('');
 }
 /**
  * Write scoring result to GitHub Job Summary

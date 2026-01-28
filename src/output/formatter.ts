@@ -70,34 +70,63 @@ export function setWhitelistOutputs(username: string): void {
  * Log scoring result summary
  */
 export function logResultSummary(result: ScoringResult): void {
-  core.info('='.repeat(50))
-  core.info(`Contributor Quality Score: ${result.score}/1000`)
-  core.info(`Status: ${result.passed ? 'PASSED' : 'FAILED'}`)
-  core.info(`Threshold: ${result.threshold}`)
-  core.info('='.repeat(50))
-
   core.info('')
-  core.info('Metric Breakdown:')
+  core.info('╔══════════════════════════════════════════════════╗')
+  core.info('║         CONTRIBUTOR QUALITY ANALYSIS             ║')
+  core.info('╚══════════════════════════════════════════════════╝')
+  core.info('')
+  core.info(`  Score:     ${result.score}/1000`)
+  core.info(`  Status:    ${result.passed ? '✓ PASSED' : '✗ NEEDS REVIEW'}`)
+  core.info(`  Threshold: ${result.threshold}`)
+  core.info('')
+
+  core.info(
+    '┌─────────────────────────────────────────────────────────────────────────────────┐'
+  )
+  core.info(
+    '│ Metric               │ Score  │ Weight │ Contribution │ Details                │'
+  )
+  core.info(
+    '├─────────────────────────────────────────────────────────────────────────────────┤'
+  )
+
+  let totalContribution = 0
   for (const metric of result.metrics) {
+    const contribution = (metric.normalizedScore * metric.weight) / 10
+    totalContribution += contribution
+    const name = metric.name.padEnd(20)
+    const score = `${metric.normalizedScore}/100`.padEnd(6)
+    const weight = `${(metric.weight * 100).toFixed(0)}%`.padEnd(6)
+    const contrib = contribution.toFixed(1).padStart(5)
+    const details = (metric.details || '-').substring(0, 22).padEnd(22)
     core.info(
-      `  ${metric.name}: ${metric.normalizedScore}/100 (${metric.details})`
+      `│ ${name} │ ${score} │ ${weight} │ ${contrib} pts    │ ${details} │`
     )
   }
+
+  core.info(
+    '├─────────────────────────────────────────────────────────────────────────────────┤'
+  )
+  core.info(
+    `│ TOTAL                │        │  100%  │ ${totalContribution.toFixed(1).padStart(5)} pts    │ × 10 = ${result.score} score     │`
+  )
+  core.info(
+    '└─────────────────────────────────────────────────────────────────────────────────┘'
+  )
 
   if (result.recommendations.length > 0) {
     core.info('')
     core.info('Recommendations:')
     for (const rec of result.recommendations) {
-      core.info(`  - ${rec}`)
+      core.info(`  → ${rec}`)
     }
   }
 
   core.info('')
   core.info(
-    `Analysis window: ${result.dataWindowStart.toISOString().split('T')[0]} to ${result.dataWindowEnd.toISOString().split('T')[0]}`
+    `Analysis: ${result.dataWindowStart.toISOString().split('T')[0]} to ${result.dataWindowEnd.toISOString().split('T')[0]} | Data points: ${result.totalDataPoints} | Decay: ${(result.decayFactor * 100).toFixed(0)}%`
   )
-  core.info(`Total data points: ${result.totalDataPoints}`)
-  core.info(`Decay factor: ${(result.decayFactor * 100).toFixed(0)}%`)
+  core.info('')
 }
 
 /**
