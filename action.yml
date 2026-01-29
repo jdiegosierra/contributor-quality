@@ -14,10 +14,31 @@ inputs:
     required: true
     default: ${{ github.token }}
 
-  minimum-score:
-    description: 'Minimum score to pass (0-1000)'
+  thresholds:
+    description: 'JSON object with custom metric thresholds'
     required: false
-    default: '300'
+    default: '{}'
+
+  threshold-pr-merge-rate:
+    description: 'Minimum PR merge rate (0-1)'
+    required: false
+
+  threshold-account-age:
+    description: 'Minimum account age in days'
+    required: false
+
+  threshold-positive-reactions:
+    description: 'Minimum positive reactions required'
+    required: false
+
+  threshold-negative-reactions:
+    description: 'Maximum negative reactions allowed'
+    required: false
+
+  required-metrics:
+    description: 'Comma-separated list of metrics that must pass'
+    required: false
+    default: 'prMergeRate,accountAge'
 
   minimum-stars:
     description: 'Minimum stars for a repo to be considered quality'
@@ -40,22 +61,16 @@ inputs:
     required: false
     default: ''
 
-  on-low-score:
+  on-fail:
     description:
-      'Action when score is below threshold: comment, label, fail,
-      comment-and-label, none'
+      'Action when check fails: comment, label, fail, comment-and-label, none'
     required: false
     default: 'comment'
 
   label-name:
-    description: 'Label to apply when on-low-score includes label'
+    description: 'Label to apply when on-fail includes label'
     required: false
     default: 'needs-review'
-
-  weights:
-    description: 'JSON object with custom metric weights'
-    required: false
-    default: '{}'
 
   dry-run:
     description: 'Log results without taking action'
@@ -75,14 +90,17 @@ inputs:
     default: '30'
 
 outputs:
-  score:
-    description: 'Contributor quality score (0-1000)'
-
   passed:
-    description: 'Whether the contributor passed the minimum threshold'
+    description: 'Whether all required metrics passed their thresholds'
+
+  passed-count:
+    description: 'Number of metrics that passed'
+
+  total-metrics:
+    description: 'Total number of metrics evaluated'
 
   breakdown:
-    description: 'JSON breakdown of individual metric scores'
+    description: 'JSON breakdown of individual metric results'
 
   recommendations:
     description: 'JSON array of recommendations for the contributor'

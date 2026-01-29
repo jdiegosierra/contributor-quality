@@ -96,19 +96,35 @@ export class GitHubClient {
   ): Promise<GraphQLContributorData> {
     core.info(`Fetching contributor data for ${username}`)
 
+    // Build issue search query to find issues created by user
+    // Using ISSUE_ADVANCED type with is:issue to properly filter out PRs
+    const issueSearchQuery = `author:${username} is:issue created:>=${sinceDate.toISOString().split('T')[0]}`
+    console.log(`[DEBUG] Issue search query: ${issueSearchQuery}`)
+
     const result = await this.executeGraphQL<GraphQLContributorData>(
       CONTRIBUTOR_DATA_QUERY,
       {
         username,
         since: sinceDate.toISOString(),
         prCursor: null,
-        issueCursor: null,
-        commentCursor: null
+        commentCursor: null,
+        issueSearchQuery
       }
     )
 
     if (!result.user) {
       throw new Error(`User not found: ${username}`)
+    }
+
+    console.log(
+      `[DEBUG] Issue search returned: issueCount=${result.issueSearch?.issueCount ?? 0}, nodes=${result.issueSearch?.nodes?.length ?? 0}`
+    )
+    if (result.issueSearch?.nodes?.length) {
+      for (const node of result.issueSearch.nodes) {
+        console.log(
+          `[DEBUG] Node: __typename=${(node as { __typename?: string }).__typename}, keys=${Object.keys(node).join(',')}`
+        )
+      }
     }
 
     // Handle pagination for PRs if needed
@@ -126,8 +142,8 @@ export class GitHubClient {
           username,
           since: sinceDate.toISOString(),
           prCursor: prPageInfo.endCursor,
-          issueCursor: null,
-          commentCursor: null
+          commentCursor: null,
+          issueSearchQuery
         }
       )
 
@@ -144,32 +160,6 @@ export class GitHubClient {
       return prDate >= sinceDate
     })
 
-    // Handle pagination for Issues
-    let allIssues = [...result.user.issues.nodes]
-    let issuePageInfo = result.user.issues.pageInfo
-    pagesLoaded = 1
-
-    while (issuePageInfo.hasNextPage && pagesLoaded < maxPages) {
-      core.debug(`Fetching additional Issues page ${pagesLoaded + 1}`)
-
-      const nextPage = await this.executeGraphQL<GraphQLContributorData>(
-        CONTRIBUTOR_DATA_QUERY,
-        {
-          username,
-          since: sinceDate.toISOString(),
-          prCursor: null,
-          issueCursor: issuePageInfo.endCursor,
-          commentCursor: null
-        }
-      )
-
-      if (nextPage.user) {
-        allIssues = [...allIssues, ...nextPage.user.issues.nodes]
-        issuePageInfo = nextPage.user.issues.pageInfo
-      }
-      pagesLoaded++
-    }
-
     // Handle pagination for Comments
     let allComments = [...result.user.issueComments.nodes]
     let commentPageInfo = result.user.issueComments.pageInfo
@@ -184,8 +174,8 @@ export class GitHubClient {
           username,
           since: sinceDate.toISOString(),
           prCursor: null,
-          issueCursor: null,
-          commentCursor: commentPageInfo.endCursor
+          commentCursor: commentPageInfo.endCursor,
+          issueSearchQuery
         }
       )
 
@@ -196,7 +186,9 @@ export class GitHubClient {
       pagesLoaded++
     }
 
-    // Return aggregated data
+    // Return aggregated data with safeguards for search results
+    const issueSearch = result.issueSearch ?? { issueCount: 0, nodes: [] }
+
     return {
       user: {
         ...result.user,
@@ -205,16 +197,15 @@ export class GitHubClient {
           nodes: filteredPRs,
           totalCount: filteredPRs.length
         },
-        issues: {
-          ...result.user.issues,
-          nodes: allIssues,
-          totalCount: allIssues.length
-        },
         issueComments: {
           ...result.user.issueComments,
           nodes: allComments,
           totalCount: allComments.length
         }
+      },
+      issueSearch: {
+        issueCount: issueSearch.issueCount ?? 0,
+        nodes: issueSearch.nodes ?? []
       }
     }
   }
@@ -287,6 +278,50 @@ export class GitHubClient {
         issue_number: context.prNumber,
         body
       })
+    })
+  }
+
+  /**
+   * Update existing comment or create a new one
+   * Looks for comments containing the marker and updates the first one found
+   */
+  async upsertPRComment(
+    context: PRContext,
+    body: string,
+    marker: string
+  ): Promise<void> {
+    await executeWithRetry(async () => {
+      // Get existing comments
+      const { data: comments } = await this.octokit.rest.issues.listComments({
+        owner: context.owner,
+        repo: context.repo,
+        issue_number: context.prNumber
+      })
+
+      // Find existing comment with marker
+      const existingComment = comments.find((comment) =>
+        comment.body?.includes(marker)
+      )
+
+      if (existingComment) {
+        // Update existing comment
+        await this.octokit.rest.issues.updateComment({
+          owner: context.owner,
+          repo: context.repo,
+          comment_id: existingComment.id,
+          body
+        })
+        core.info('Updated existing quality check comment')
+      } else {
+        // Create new comment
+        await this.octokit.rest.issues.createComment({
+          owner: context.owner,
+          repo: context.repo,
+          issue_number: context.prNumber,
+          body
+        })
+        core.info('Created new quality check comment')
+      }
     })
   }
 

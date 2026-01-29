@@ -6,7 +6,7 @@ import type { GraphQLContributorData } from '../types/github.js'
 import type {
   RepoQualityData,
   RepoContribution,
-  MetricResult
+  MetricCheckResult
 } from '../types/metrics.js'
 
 /**
@@ -68,46 +68,35 @@ export function extractRepoQualityData(
 }
 
 /**
- * Calculate repository quality metric score
+ * Check repository quality against threshold
  *
- * Scoring (only positive - contributing to quality repos is good,
- * not contributing isn't necessarily bad):
- * - 10+ quality repos = 100 points
- * - 5-9 quality repos = 75 points
- * - 2-4 quality repos = 50 points
- * - 1 quality repo = 25 points
- * - 0 quality repos = 50 (neutral)
+ * @param data - Extracted repo quality data
+ * @param threshold - Minimum number of quality repos to pass
+ * @param minimumStars - Stars threshold used for "quality" classification
+ * @returns MetricCheckResult with pass/fail status
  */
-export function calculateRepoQualityMetric(
+export function checkRepoQuality(
   data: RepoQualityData,
-  weight: number,
+  threshold: number,
   minimumStars: number
-): MetricResult {
+): MetricCheckResult {
   const qualityCount = data.qualityRepoCount
+  const passed = qualityCount >= threshold
 
-  let normalizedScore: number
   let details: string
 
-  if (qualityCount === 0) {
-    if (data.contributedRepos.length === 0) {
-      normalizedScore = 50 // Neutral - no data
-      details = 'No merged PRs found in analysis window'
-    } else {
-      normalizedScore = 50 // Neutral - has contributions but not to high-star repos
-      details = `Contributed to ${data.contributedRepos.length} repos, none with ${minimumStars}+ stars`
-    }
-  } else if (qualityCount >= 10) {
-    normalizedScore = 100
-    details = `Excellent: Merged PRs in ${qualityCount} repos with ${minimumStars}+ stars`
-  } else if (qualityCount >= 5) {
-    normalizedScore = 75
-    details = `Good: Merged PRs in ${qualityCount} repos with ${minimumStars}+ stars`
-  } else if (qualityCount >= 2) {
-    normalizedScore = 65
-    details = `Moderate: Merged PRs in ${qualityCount} repos with ${minimumStars}+ stars`
+  if (data.contributedRepos.length === 0) {
+    details = 'No merged PRs found in analysis window'
+  } else if (qualityCount === 0) {
+    details = `Contributed to ${data.contributedRepos.length} repos, none with ${minimumStars}+ stars`
   } else {
-    normalizedScore = 55
-    details = `Some quality contributions: Merged PR in ${qualityCount} repo with ${minimumStars}+ stars`
+    details = `Merged PRs in ${qualityCount} repos with ${minimumStars}+ stars`
+  }
+
+  if (passed && threshold > 0) {
+    details += ` (meets threshold >= ${threshold})`
+  } else if (!passed && threshold > 0) {
+    details += ` (below threshold >= ${threshold})`
   }
 
   // Add info about highest star repo if notable
@@ -118,9 +107,8 @@ export function calculateRepoQualityMetric(
   return {
     name: 'repoQuality',
     rawValue: qualityCount,
-    normalizedScore,
-    weightedScore: normalizedScore * weight,
-    weight,
+    threshold,
+    passed,
     details,
     dataPoints: data.contributedRepos.length
   }

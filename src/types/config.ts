@@ -2,20 +2,35 @@
  * Configuration types for the contributor quality action
  */
 
-/** Metric weight configuration for scoring */
-export interface MetricWeights {
+/** Threshold configuration for all metrics */
+export interface MetricThresholds {
+  /** PR merge rate (0-1): minimum acceptable merge rate */
   prMergeRate: number
+
+  /** Repo quality: minimum number of quality repos with merged PRs */
   repoQuality: number
+
+  /** Positive reactions: minimum positive reaction count */
   positiveReactions: number
+
+  /** Negative reactions: maximum acceptable negative reaction count */
   negativeReactions: number
+
+  /** Account age: minimum account age in days */
   accountAge: number
+
+  /** Activity consistency: minimum consistency score (0-1) */
   activityConsistency: number
+
+  /** Issue engagement: minimum issues created */
   issueEngagement: number
+
+  /** Code reviews: minimum reviews given */
   codeReviews: number
 }
 
-/** Actions to take when score is below threshold */
-export type LowScoreAction =
+/** Actions to take when check fails */
+export type FailAction =
   | 'comment'
   | 'label'
   | 'fail'
@@ -30,8 +45,11 @@ export interface ContributorQualityConfig {
   /** GitHub token for API access */
   githubToken: string
 
-  /** Minimum score to pass (0-1000) */
-  minimumScore: number
+  /** Metric thresholds */
+  thresholds: MetricThresholds
+
+  /** Metrics that must pass for the check to pass */
+  requiredMetrics: string[]
 
   /** Minimum stars for a repo to be considered "quality" */
   minimumStars: number
@@ -45,14 +63,11 @@ export interface ContributorQualityConfig {
   /** Organizations whose members always pass */
   trustedOrgs: string[]
 
-  /** Action to take when score is below threshold */
-  onLowScore: LowScoreAction
+  /** Action to take when check fails */
+  onFail: FailAction
 
   /** Label name to apply when using label action */
   labelName: string
-
-  /** Custom metric weights */
-  weights: MetricWeights
 
   /** Run without taking action (logging only) */
   dryRun: boolean
@@ -64,17 +79,20 @@ export interface ContributorQualityConfig {
   newAccountThresholdDays: number
 }
 
-/** Default metric weights */
-export const DEFAULT_WEIGHTS: MetricWeights = {
-  prMergeRate: 0.2,
-  repoQuality: 0.15,
-  positiveReactions: 0.15,
-  negativeReactions: 0.1,
-  accountAge: 0.1,
-  activityConsistency: 0.1,
-  issueEngagement: 0.1,
-  codeReviews: 0.1
+/** Default metric thresholds */
+export const DEFAULT_THRESHOLDS: MetricThresholds = {
+  prMergeRate: 0.3,
+  repoQuality: 0,
+  positiveReactions: 0,
+  negativeReactions: 10,
+  accountAge: 30,
+  activityConsistency: 0,
+  issueEngagement: 0,
+  codeReviews: 0
 }
+
+/** Default required metrics (must pass for check to pass) */
+export const DEFAULT_REQUIRED_METRICS: string[] = ['prMergeRate', 'accountAge']
 
 /** Default trusted bots */
 export const DEFAULT_TRUSTED_USERS: string[] = [

@@ -4,24 +4,8 @@
 
 export {
   extractAllMetrics,
-  calculateAllMetrics,
-  calculateBreakdown,
+  checkAllMetrics,
+  determinePassStatus,
   generateRecommendations,
-  calculateScore
+  evaluateContributor
 } from './engine.js'
-
-export {
-  calculateDecayFactor,
-  applyDecayTowardBaseline,
-  calculateDecayPercentage
-} from './decay.js'
-
-export {
-  normalizeScore,
-  clampScore,
-  calculateAdjustment,
-  getScoreCategory,
-  getScoreEmoji,
-  formatScore,
-  scoreToPercentage
-} from './normalizer.js'

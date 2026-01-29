@@ -3,26 +3,47 @@
  */
 
 import type { GraphQLContributorData } from '../types/github.js'
-import type { IssueEngagementData, MetricResult } from '../types/metrics.js'
+import type {
+  IssueEngagementData,
+  MetricCheckResult
+} from '../types/metrics.js'
 
 /**
  * Extract issue engagement data from GraphQL response
+ * Uses issueSearch results which include issues from all repositories
+ * Note: Date filtering is done in the GraphQL search query, not here
  */
 export function extractIssueEngagementData(
-  data: GraphQLContributorData,
-  sinceDate: Date
+  data: GraphQLContributorData
 ): IssueEngagementData {
-  const issues = data.user.issues.nodes.filter((issue) => {
-    const issueDate = new Date(issue.createdAt)
-    return issueDate >= sinceDate
-  })
+  // Issues from search are already filtered by date in the query
+  // Filter out empty objects from GraphQL search (fragment spread can return empty objects)
+  const rawNodes = data.issueSearch?.nodes ?? []
+  // Filter to only include Issue types with expected properties
+  const issues = rawNodes.filter(
+    (issue) => issue.__typename === 'Issue' && issue.comments && issue.reactions
+  )
+
+  // Debug: log issue search results
+
+  console.log(
+    `[DEBUG] Issue search: ${rawNodes.length} raw nodes, ${issues.length} valid issues`
+  )
+  // Log first node structure if any
+  if (rawNodes.length > 0) {
+    const firstNode = rawNodes[0]
+
+    console.log(
+      `[DEBUG] First node: __typename=${firstNode.__typename || 'undefined'}, keys=${Object.keys(firstNode).join(', ') || '(empty)'}`
+    )
+  }
 
   const issuesWithComments = issues.filter(
     (issue) => issue.comments.totalCount > 0
   ).length
 
   const issuesWithReactions = issues.filter(
-    (issue) => issue.reactions.totalCount > 0
+    (issue) => issue.reactions.nodes.length > 0
   ).length
 
   const totalComments = issues.reduce(
@@ -42,70 +63,49 @@ export function extractIssueEngagementData(
 }
 
 /**
- * Calculate issue engagement metric score
+ * Check issue engagement against threshold
  *
- * Issues that receive engagement from others suggest quality contributions.
- *
- * Scoring:
- * - No issues = 50 (neutral)
- * - 70%+ engagement rate with 3+ issues = 100 points
- * - 50-70% engagement rate with 2+ issues = 75 points
- * - 30-50% engagement rate = 60 points
- * - <30% engagement rate = 50 points (neutral, not penalized)
+ * @param data - Extracted issue engagement data
+ * @param threshold - Minimum issues created to pass
+ * @returns MetricCheckResult with pass/fail status
  */
-export function calculateIssueEngagementMetric(
+export function checkIssueEngagement(
   data: IssueEngagementData,
-  weight: number
-): MetricResult {
-  // No issues = neutral
-  if (data.issuesCreated === 0) {
-    return {
-      name: 'issueEngagement',
-      rawValue: 0,
-      normalizedScore: 50,
-      weightedScore: 50 * weight,
-      weight,
-      details: 'No issues created in analysis window',
-      dataPoints: 0
+  threshold: number
+): MetricCheckResult {
+  const issuesCreated = data.issuesCreated
+  const passed = issuesCreated >= threshold
+
+  let details: string
+
+  if (issuesCreated === 0) {
+    details = 'No issues created in analysis window'
+  } else {
+    // Calculate engagement rate (issues that got comments or reactions)
+    const engagedIssues = Math.max(
+      data.issuesWithComments,
+      data.issuesWithReactions
+    )
+    details = `${issuesCreated} issues created, ${engagedIssues} received engagement`
+
+    // Add average comments info if notable
+    if (data.averageCommentsPerIssue >= 3) {
+      details += `. Avg ${data.averageCommentsPerIssue.toFixed(1)} comments/issue`
     }
   }
 
-  // Calculate engagement rate (issues that got comments or reactions)
-  const engagedIssues = Math.max(
-    data.issuesWithComments,
-    data.issuesWithReactions
-  )
-  const engagementRate = engagedIssues / data.issuesCreated
-
-  let normalizedScore: number
-  let details: string
-
-  if (engagementRate >= 0.7 && data.issuesCreated >= 3) {
-    normalizedScore = 100
-    details = `High engagement: ${engagedIssues}/${data.issuesCreated} issues received responses`
-  } else if (engagementRate >= 0.5 && data.issuesCreated >= 2) {
-    normalizedScore = 75
-    details = `Good engagement: ${engagedIssues}/${data.issuesCreated} issues received responses`
-  } else if (engagementRate >= 0.3) {
-    normalizedScore = 60
-    details = `Some engagement: ${engagedIssues}/${data.issuesCreated} issues received responses`
-  } else {
-    normalizedScore = 50
-    details = `Low engagement: ${engagedIssues}/${data.issuesCreated} issues received responses`
-  }
-
-  // Add average comments info if notable
-  if (data.averageCommentsPerIssue >= 3) {
-    details += `. Avg ${data.averageCommentsPerIssue.toFixed(1)} comments/issue`
+  if (threshold > 0) {
+    details += passed
+      ? ` (meets threshold >= ${threshold})`
+      : ` (below threshold >= ${threshold})`
   }
 
   return {
     name: 'issueEngagement',
-    rawValue: engagementRate,
-    normalizedScore,
-    weightedScore: normalizedScore * weight,
-    weight,
+    rawValue: issuesCreated,
+    threshold,
+    passed,
     details,
-    dataPoints: data.issuesCreated
+    dataPoints: issuesCreated
   }
 }

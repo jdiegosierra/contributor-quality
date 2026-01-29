@@ -15,7 +15,7 @@ import * as core from '../../__fixtures__/core.js'
 jest.unstable_mockModule('@actions/core', () => core)
 
 const { parseInputs } = await import('../../src/config/inputs.js')
-const { DEFAULT_CONFIG, DEFAULT_TRUSTED_USERS } =
+const { DEFAULT_TRUSTED_USERS, DEFAULT_THRESHOLDS } =
   await import('../../src/config/defaults.js')
 
 describe('Input Parsing', () => {
@@ -27,14 +27,17 @@ describe('Input Parsing', () => {
     core.getInput.mockImplementation((name: string) => {
       const defaults: Record<string, string> = {
         'github-token': 'test-token',
-        'minimum-score': '300',
+        thresholds: '{}',
+        'threshold-pr-merge-rate': '',
+        'threshold-account-age': '',
+        'threshold-negative-reactions': '',
+        'required-metrics': 'prMergeRate,accountAge',
         'minimum-stars': '100',
         'analysis-window': '12',
         'trusted-users': '',
         'trusted-orgs': '',
-        'on-low-score': 'comment',
+        'on-fail': 'comment',
         'label-name': 'needs-review',
-        weights: '{}',
         'dry-run': 'false',
         'new-account-action': 'neutral',
         'new-account-threshold-days': '30'
@@ -53,22 +56,37 @@ describe('Input Parsing', () => {
     expect(config.githubToken).toBe('test-token')
   })
 
-  it('uses default minimum score', () => {
+  it('uses default thresholds', () => {
     const config = parseInputs()
 
-    expect(config.minimumScore).toBe(DEFAULT_CONFIG.minimumScore)
+    expect(config.thresholds).toEqual(DEFAULT_THRESHOLDS)
   })
 
-  it('parses custom minimum score', () => {
+  it('parses custom threshold-pr-merge-rate', () => {
     core.getInput.mockImplementation((name: string) => {
-      if (name === 'minimum-score') return '500'
+      if (name === 'threshold-pr-merge-rate') return '0.5'
       if (name === 'github-token') return 'test-token'
       return ''
     })
 
     const config = parseInputs()
 
-    expect(config.minimumScore).toBe(500)
+    expect(config.thresholds.prMergeRate).toBe(0.5)
+  })
+
+  it('parses custom thresholds from JSON', () => {
+    core.getInput.mockImplementation((name: string) => {
+      if (name === 'thresholds') return '{"prMergeRate": 0.4, "accountAge": 60}'
+      if (name === 'github-token') return 'test-token'
+      return ''
+    })
+
+    const config = parseInputs()
+
+    expect(config.thresholds.prMergeRate).toBe(0.4)
+    expect(config.thresholds.accountAge).toBe(60)
+    // Other thresholds should use defaults
+    expect(config.thresholds.repoQuality).toBe(DEFAULT_THRESHOLDS.repoQuality)
   })
 
   it('uses default trusted users when empty', () => {
@@ -107,56 +125,54 @@ describe('Input Parsing', () => {
     expect(config.dryRun).toBe(true)
   })
 
-  it('validates on-low-score action', () => {
+  it('validates on-fail action', () => {
     core.getInput.mockImplementation((name: string) => {
       if (name === 'github-token') return 'test-token'
-      if (name === 'on-low-score') return 'invalid-action'
+      if (name === 'on-fail') return 'invalid-action'
       return ''
     })
 
     const config = parseInputs()
 
     // Should fall back to default
-    expect(config.onLowScore).toBe('comment')
+    expect(config.onFail).toBe('comment')
     expect(core.warning).toHaveBeenCalled()
   })
 
-  it('parses custom weights', () => {
+  it('parses required metrics', () => {
     core.getInput.mockImplementation((name: string) => {
       if (name === 'github-token') return 'test-token'
-      if (name === 'weights') return '{"prMergeRate": 0.3}'
+      if (name === 'required-metrics') return 'prMergeRate,codeReviews'
       return ''
     })
 
     const config = parseInputs()
 
-    expect(config.weights.prMergeRate).toBe(0.3)
-    // Other weights should use defaults
-    expect(config.weights.repoQuality).toBe(DEFAULT_CONFIG.weights.repoQuality)
+    expect(config.requiredMetrics).toEqual(['prMergeRate', 'codeReviews'])
   })
 
   describe('Input Validation', () => {
-    it('throws error for minimum-score out of range (high)', () => {
+    it('throws error for invalid prMergeRate threshold (> 1)', () => {
       core.getInput.mockImplementation((name: string) => {
         if (name === 'github-token') return 'test-token'
-        if (name === 'minimum-score') return '1500'
+        if (name === 'threshold-pr-merge-rate') return '1.5'
         return ''
       })
 
       expect(() => parseInputs()).toThrow(
-        'minimum-score must be between 0 and 1000'
+        'prMergeRate threshold must be between 0 and 1'
       )
     })
 
-    it('throws error for minimum-score out of range (negative)', () => {
+    it('throws error for invalid prMergeRate threshold (< 0)', () => {
       core.getInput.mockImplementation((name: string) => {
         if (name === 'github-token') return 'test-token'
-        if (name === 'minimum-score') return '-100'
+        if (name === 'threshold-pr-merge-rate') return '-0.5'
         return ''
       })
 
       expect(() => parseInputs()).toThrow(
-        'minimum-score must be between 0 and 1000'
+        'prMergeRate threshold must be between 0 and 1'
       )
     })
 
@@ -184,14 +200,16 @@ describe('Input Parsing', () => {
       )
     })
 
-    it('throws error for invalid number in minimum-score', () => {
+    it('throws error for invalid required metrics', () => {
       core.getInput.mockImplementation((name: string) => {
         if (name === 'github-token') return 'test-token'
-        if (name === 'minimum-score') return 'not-a-number'
+        if (name === 'required-metrics') return 'prMergeRate,invalidMetric'
         return ''
       })
 
-      expect(() => parseInputs()).toThrow('Invalid minimum-score')
+      expect(() => parseInputs()).toThrow(
+        'Invalid metric names in required-metrics'
+      )
     })
 
     it('throws error for negative new-account-threshold-days', () => {
@@ -206,26 +224,26 @@ describe('Input Parsing', () => {
       )
     })
 
-    it('allows edge case minimum-score of 0', () => {
+    it('allows edge case prMergeRate threshold of 0', () => {
       core.getInput.mockImplementation((name: string) => {
         if (name === 'github-token') return 'test-token'
-        if (name === 'minimum-score') return '0'
+        if (name === 'threshold-pr-merge-rate') return '0'
         return ''
       })
 
       const config = parseInputs()
-      expect(config.minimumScore).toBe(0)
+      expect(config.thresholds.prMergeRate).toBe(0)
     })
 
-    it('allows edge case minimum-score of 1000', () => {
+    it('allows edge case prMergeRate threshold of 1', () => {
       core.getInput.mockImplementation((name: string) => {
         if (name === 'github-token') return 'test-token'
-        if (name === 'minimum-score') return '1000'
+        if (name === 'threshold-pr-merge-rate') return '1'
         return ''
       })
 
       const config = parseInputs()
-      expect(config.minimumScore).toBe(1000)
+      expect(config.thresholds.prMergeRate).toBe(1)
     })
   })
 })

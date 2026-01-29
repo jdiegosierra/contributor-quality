@@ -3,14 +3,17 @@
  */
 
 export {
-  generateLowScoreComment,
+  generateAnalysisComment,
   generatePassedComment,
-  generateWhitelistComment
+  generateWhitelistComment,
+  COMMENT_MARKER
 } from './comment.js'
 
 export {
   formatActionOutput,
   setActionOutputs,
   setWhitelistOutputs,
-  logResultSummary
+  logResultSummary,
+  writeJobSummary,
+  writeWhitelistSummary
 } from './formatter.js'

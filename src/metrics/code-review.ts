@@ -3,7 +3,7 @@
  */
 
 import type { GraphQLContributorData } from '../types/github.js'
-import type { CodeReviewData, MetricResult } from '../types/metrics.js'
+import type { CodeReviewData, MetricCheckResult } from '../types/metrics.js'
 
 /**
  * Extract code review data from GraphQL response
@@ -26,51 +26,39 @@ export function extractCodeReviewData(
 }
 
 /**
- * Calculate code review metric score
+ * Check code reviews against threshold
  *
- * Giving thoughtful code reviews is a strong positive signal of
- * community engagement and technical contribution.
- *
- * Scoring:
- * - 20+ reviews = 100 points
- * - 10-19 reviews = 80 points
- * - 5-9 reviews = 65 points
- * - 1-4 reviews = 55 points
- * - 0 reviews = 50 points (neutral)
+ * @param data - Extracted code review data
+ * @param threshold - Minimum reviews given to pass
+ * @returns MetricCheckResult with pass/fail status
  */
-export function calculateCodeReviewMetric(
+export function checkCodeReviews(
   data: CodeReviewData,
-  weight: number
-): MetricResult {
-  let normalizedScore: number
+  threshold: number
+): MetricCheckResult {
+  const reviewsGiven = data.reviewsGiven
+  const passed = reviewsGiven >= threshold
+
   let details: string
 
-  const reviews = data.reviewsGiven
-
-  if (reviews === 0) {
-    normalizedScore = 50
+  if (reviewsGiven === 0) {
     details = 'No code reviews given in analysis window'
-  } else if (reviews >= 20) {
-    normalizedScore = 100
-    details = `Excellent reviewer: ${reviews} code reviews given`
-  } else if (reviews >= 10) {
-    normalizedScore = 80
-    details = `Active reviewer: ${reviews} code reviews given`
-  } else if (reviews >= 5) {
-    normalizedScore = 65
-    details = `Some reviews: ${reviews} code reviews given`
   } else {
-    normalizedScore = 55
-    details = `Few reviews: ${reviews} code reviews given`
+    details = `${reviewsGiven} code reviews given`
+  }
+
+  if (threshold > 0) {
+    details += passed
+      ? ` (meets threshold >= ${threshold})`
+      : ` (below threshold >= ${threshold})`
   }
 
   return {
     name: 'codeReviews',
-    rawValue: reviews,
-    normalizedScore,
-    weightedScore: normalizedScore * weight,
-    weight,
+    rawValue: reviewsGiven,
+    threshold,
+    passed,
     details,
-    dataPoints: reviews
+    dataPoints: reviewsGiven
   }
 }

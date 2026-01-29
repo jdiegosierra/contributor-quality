@@ -4,7 +4,7 @@
 
 /** Main query to fetch contributor metrics */
 export const CONTRIBUTOR_DATA_QUERY = `
-query ContributorAnalysis($username: String!, $since: DateTime!, $prCursor: String, $issueCursor: String, $commentCursor: String) {
+query ContributorAnalysis($username: String!, $since: DateTime!, $prCursor: String, $commentCursor: String, $issueSearchQuery: String!) {
   user(login: $username) {
     login
     createdAt
@@ -32,24 +32,6 @@ query ContributorAnalysis($username: String!, $since: DateTime!, $prCursor: Stri
         reviews(first: 1) {
           totalCount
         }
-      }
-      pageInfo {
-        hasNextPage
-        endCursor
-      }
-    }
-
-    issues(
-      first: 50
-      orderBy: {field: CREATED_AT, direction: DESC}
-      filterBy: {createdBy: $username}
-      after: $issueCursor
-    ) {
-      totalCount
-      nodes {
-        createdAt
-        comments { totalCount }
-        reactions { totalCount }
       }
       pageInfo {
         hasNextPage
@@ -89,6 +71,24 @@ query ContributorAnalysis($username: String!, $since: DateTime!, $prCursor: Stri
       pageInfo {
         hasNextPage
         endCursor
+      }
+    }
+  }
+
+  # Search for issues created by the user (works across all repos)
+  # Using ISSUE_ADVANCED type (introduced March 2025) for proper is:issue filtering
+  issueSearch: search(query: $issueSearchQuery, type: ISSUE_ADVANCED, first: 50) {
+    issueCount
+    nodes {
+      __typename
+      ... on Issue {
+        createdAt
+        comments { totalCount }
+        reactions(first: 20) {
+          nodes {
+            content
+          }
+        }
       }
     }
   }

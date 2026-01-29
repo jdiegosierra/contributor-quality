@@ -12,7 +12,7 @@ If you discover a security vulnerability in this project, please report it
 responsibly:
 
 1. **Do NOT open a public issue** for security vulnerabilities
-2. Email the maintainer directly at security@jdiegosierra.com
+2. Email the maintainer directly at <juandiegosierrafernandez@gmail.com>
 3. Include a description of the vulnerability and steps to reproduce
 4. Allow reasonable time for a fix before public disclosure
 

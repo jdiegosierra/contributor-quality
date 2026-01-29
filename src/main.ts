@@ -5,14 +5,20 @@
 import * as core from '@actions/core'
 import { parseInputs } from './config/index.js'
 import { GitHubClient, getPRContext } from './api/index.js'
-import { calculateScore } from './scoring/index.js'
+import { evaluateContributor } from './scoring/index.js'
 import {
-  generateLowScoreComment,
+  generateAnalysisComment,
+  generateWhitelistComment,
+  COMMENT_MARKER
+} from './output/comment.js'
+import {
   setActionOutputs,
   setWhitelistOutputs,
-  logResultSummary
-} from './output/index.js'
-import type { ScoringResult } from './types/scoring.js'
+  logResultSummary,
+  writeJobSummary,
+  writeWhitelistSummary
+} from './output/formatter.js'
+import type { AnalysisResult } from './types/scoring.js'
 
 /**
  * Main action function
@@ -34,20 +40,22 @@ export async function run(): Promise<void> {
     const username = prContext.prAuthor
     core.info(`Analyzing contributor: ${username}`)
 
+    // Initialize GitHub client
+    const client = new GitHubClient(config.githubToken)
+
     // Check if user is in whitelist
     if (config.trustedUsers.includes(username)) {
       core.info(`User ${username} is in trusted users list, skipping analysis`)
       setWhitelistOutputs(username)
+      await writeWhitelistSummary(username)
 
-      if (!config.dryRun && config.onLowScore !== 'none') {
-        // Optionally comment about whitelist status
-        core.debug('User is whitelisted, no comment needed')
+      // Always comment (upsert)
+      if (!config.dryRun) {
+        const comment = generateWhitelistComment(username)
+        await client.upsertPRComment(prContext, comment, COMMENT_MARKER)
       }
       return
     }
-
-    // Initialize GitHub client
-    const client = new GitHubClient(config.githubToken)
 
     // Check organization membership
     if (config.trustedOrgs.length > 0) {
@@ -60,6 +68,13 @@ export async function run(): Promise<void> {
           `User ${username} is member of a trusted organization, skipping analysis`
         )
         setWhitelistOutputs(username)
+        await writeWhitelistSummary(username)
+
+        // Always comment (upsert)
+        if (!config.dryRun) {
+          const comment = generateWhitelistComment(username)
+          await client.upsertPRComment(prContext, comment, COMMENT_MARKER)
+        }
         return
       }
     }
@@ -71,22 +86,33 @@ export async function run(): Promise<void> {
 
     // Fetch contributor data
     core.info(
-      `Fetching contributor data from ${sinceDate.toISOString().split('T')[0]} to now`
+      `Analysis window: ${config.analysisWindowMonths} months (${sinceDate.toISOString().split('T')[0]} to ${now.toISOString().split('T')[0]})`
     )
     const contributorData = await client.fetchContributorData(
       username,
       sinceDate
     )
 
-    // Calculate score
-    core.info('Calculating contributor quality score...')
-    const result = calculateScore(contributorData, config, sinceDate)
+    // Evaluate contributor against thresholds
+    core.info('Evaluating contributor metrics...')
+    const result = evaluateContributor(contributorData, config, sinceDate)
 
     // Log results
     logResultSummary(result)
 
+    // Write Job Summary
+    await writeJobSummary(result)
+
     // Set outputs
     setActionOutputs(result)
+
+    // Always post/update comment with results
+    if (!config.dryRun) {
+      const comment = generateAnalysisComment(result, config)
+      await client.upsertPRComment(prContext, comment, COMMENT_MARKER)
+    } else {
+      core.info('[DRY RUN] Would post/update comment')
+    }
 
     // Handle new account action
     if (result.isNewAccount && config.newAccountAction !== 'neutral') {
@@ -94,9 +120,9 @@ export async function run(): Promise<void> {
       return
     }
 
-    // Handle score-based actions
+    // Handle failed check based on configuration
     if (!result.passed) {
-      await handleLowScore(result, config, client, prContext)
+      await handleFailedCheck(result, config, client, prContext)
     }
   } catch (error) {
     if (error instanceof Error) {
@@ -112,7 +138,7 @@ export async function run(): Promise<void> {
  * Handle new account based on configuration
  */
 async function handleNewAccount(
-  result: ScoringResult,
+  result: AnalysisResult,
   config: ReturnType<typeof parseInputs>,
   client: GitHubClient,
   prContext: NonNullable<ReturnType<typeof getPRContext>>
@@ -145,29 +171,21 @@ async function handleNewAccount(
 }
 
 /**
- * Handle low score based on configuration
+ * Handle failed check based on configuration
  */
-async function handleLowScore(
-  result: ScoringResult,
+async function handleFailedCheck(
+  result: AnalysisResult,
   config: ReturnType<typeof parseInputs>,
   client: GitHubClient,
   prContext: NonNullable<ReturnType<typeof getPRContext>>
 ): Promise<void> {
   core.warning(
-    `Contributor score (${result.score}) is below threshold (${config.minimumScore})`
+    `Contributor check failed: ${result.failedMetrics.length} required metrics not met`
   )
 
-  const comment = generateLowScoreComment(result, config)
-
-  switch (config.onLowScore) {
+  switch (config.onFail) {
     case 'comment':
-      if (!config.dryRun) {
-        await client.addPRComment(prContext, comment)
-        core.info('Posted quality check comment')
-      } else {
-        core.info('[DRY RUN] Would post comment:')
-        core.info(comment)
-      }
+      // Comment already handled above (always comment)
       break
 
     case 'label':
@@ -180,24 +198,24 @@ async function handleLowScore(
       break
 
     case 'comment-and-label':
+      // Comment already handled above
       if (!config.dryRun) {
-        await client.addPRComment(prContext, comment)
         await client.addPRLabel(prContext, config.labelName)
-        core.info(`Posted comment and added label "${config.labelName}"`)
+        core.info(`Added label "${config.labelName}"`)
       } else {
-        core.info('[DRY RUN] Would post comment and add label')
+        core.info(`[DRY RUN] Would add label`)
       }
       break
 
     case 'fail':
       core.setFailed(
-        `Contributor quality score (${result.score}) is below minimum threshold (${config.minimumScore})`
+        `Contributor quality check failed: ${result.failedMetrics.join(', ')} did not meet thresholds`
       )
       break
 
     case 'none':
     default:
-      core.info('Low score action set to "none", no action taken')
+      core.info('Failed check action set to "none", no additional action taken')
       break
   }
 }

@@ -37,16 +37,16 @@ export interface GitHubPullRequest {
   }
 }
 
-/** Reaction content types */
+/** Reaction content types from GitHub GraphQL API (uppercase enum values) */
 export type GitHubReactionContent =
-  | '+1'
-  | '-1'
-  | 'laugh'
-  | 'confused'
-  | 'heart'
-  | 'hooray'
-  | 'rocket'
-  | 'eyes'
+  | 'THUMBS_UP'
+  | 'THUMBS_DOWN'
+  | 'LAUGH'
+  | 'CONFUSED'
+  | 'HEART'
+  | 'HOORAY'
+  | 'ROCKET'
+  | 'EYES'
 
 /** Reaction from GitHub API */
 export interface GitHubReaction {
@@ -120,18 +120,6 @@ export interface GraphQLContributorData {
         endCursor: string | null
       }
     }
-    issues: {
-      totalCount: number
-      nodes: Array<{
-        createdAt: string
-        comments: { totalCount: number }
-        reactions: { totalCount: number }
-      }>
-      pageInfo: {
-        hasNextPage: boolean
-        endCursor: string | null
-      }
-    }
     contributionsCollection: {
       contributionCalendar: {
         totalContributions: number
@@ -160,6 +148,20 @@ export interface GraphQLContributorData {
         endCursor: string | null
       }
     }
+  }
+  /** Issues created by the user (from search API) */
+  issueSearch: {
+    issueCount: number
+    nodes: Array<{
+      __typename?: string
+      createdAt?: string
+      comments?: { totalCount: number }
+      reactions?: {
+        nodes: Array<{
+          content: GitHubReactionContent
+        }>
+      }
+    }>
   }
 }
 

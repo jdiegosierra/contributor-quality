@@ -3,7 +3,7 @@
  */
 
 import type { GraphQLContributorData } from '../types/github.js'
-import type { PRHistoryData, MetricResult } from '../types/metrics.js'
+import type { PRHistoryData, MetricCheckResult } from '../types/metrics.js'
 
 /** Threshold for very short PRs (potential spam indicator) */
 const VERY_SHORT_PR_THRESHOLD = 10
@@ -57,59 +57,47 @@ export function extractPRHistoryData(
 }
 
 /**
- * Calculate PR history metric score
+ * Check PR merge rate against threshold
  *
- * Scoring:
- * - 90%+ merge rate = +100 points
- * - 70-90% = +50 to +100 (linear)
- * - 30-70% = 0 (neutral zone)
- * - <30% = -100 to 0 (linear penalty)
+ * @param data - Extracted PR history data
+ * @param threshold - Minimum merge rate (0-1) to pass
+ * @returns MetricCheckResult with pass/fail status
  */
-export function calculatePRHistoryMetric(
+export function checkPRMergeRate(
   data: PRHistoryData,
-  weight: number
-): MetricResult {
-  // No data = neutral score
+  threshold: number
+): MetricCheckResult {
+  // No data = neutral (pass if threshold is 0)
   if (data.totalPRs === 0) {
     return {
       name: 'prMergeRate',
       rawValue: 0,
-      normalizedScore: 50, // Neutral
-      weightedScore: 50 * weight,
-      weight,
+      threshold,
+      passed: threshold === 0,
       details: 'No PR history found in analysis window',
       dataPoints: 0
     }
   }
 
-  let normalizedScore: number
-  let details: string
-
   const mergeRate = data.mergeRate
+  const passed = mergeRate >= threshold
 
-  if (mergeRate >= 0.9) {
-    normalizedScore = 100
-    details = `Excellent merge rate: ${(mergeRate * 100).toFixed(1)}% (${data.mergedPRs}/${data.mergedPRs + data.closedWithoutMerge} PRs merged)`
-  } else if (mergeRate >= 0.7) {
-    // Linear interpolation from 50 to 100
-    normalizedScore = 50 + ((mergeRate - 0.7) / 0.2) * 50
-    details = `Good merge rate: ${(mergeRate * 100).toFixed(1)}% (${data.mergedPRs}/${data.mergedPRs + data.closedWithoutMerge} PRs merged)`
-  } else if (mergeRate >= 0.3) {
-    // Neutral zone
-    normalizedScore = 50
-    details = `Average merge rate: ${(mergeRate * 100).toFixed(1)}% (${data.mergedPRs}/${data.mergedPRs + data.closedWithoutMerge} PRs merged)`
+  let details: string
+  const mergeRatePercent = (mergeRate * 100).toFixed(1)
+  const thresholdPercent = (threshold * 100).toFixed(0)
+  const prInfo = `${data.mergedPRs}/${data.mergedPRs + data.closedWithoutMerge} PRs merged`
+
+  if (passed) {
+    details = `Merge rate ${mergeRatePercent}% meets threshold (>= ${thresholdPercent}%). ${prInfo}`
   } else {
-    // Linear penalty from 50 down to 0
-    normalizedScore = (mergeRate / 0.3) * 50
-    details = `Low merge rate: ${(mergeRate * 100).toFixed(1)}% (${data.mergedPRs}/${data.mergedPRs + data.closedWithoutMerge} PRs merged)`
+    details = `Merge rate ${mergeRatePercent}% below threshold (>= ${thresholdPercent}%). ${prInfo}`
   }
 
   return {
     name: 'prMergeRate',
     rawValue: mergeRate,
-    normalizedScore,
-    weightedScore: normalizedScore * weight,
-    weight,
+    threshold,
+    passed,
     details,
     dataPoints: data.totalPRs
   }

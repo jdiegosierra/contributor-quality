@@ -5,6 +5,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: write
@@ -16,13 +20,16 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Evaluate Contributor Quality
         uses: ./
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          minimum-score: 300
-          on-low-score: comment
+          threshold-pr-merge-rate: '0.3'
+          threshold-account-age: '30'
+          required-metrics: 'prMergeRate,accountAge'
+          analysis-window: '12'
+          on-fail: comment
           dry-run: false
           trusted-users: dependabot[bot],renovate[bot]

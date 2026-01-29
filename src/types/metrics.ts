@@ -2,22 +2,19 @@
  * Metric data structures and interfaces
  */
 
-/** Result from a single metric calculation */
-export interface MetricResult {
+/** Result from checking a single metric against its threshold */
+export interface MetricCheckResult {
   /** Metric identifier */
   name: string
 
   /** Raw measured value */
   rawValue: number
 
-  /** Score on 0-100 scale before weighting */
-  normalizedScore: number
+  /** Threshold value configured */
+  threshold: number
 
-  /** Score after applying weight */
-  weightedScore: number
-
-  /** Weight applied to this metric */
-  weight: number
+  /** Whether this metric passed its check */
+  passed: boolean
 
   /** Human-readable explanation */
   details: string
@@ -83,27 +80,27 @@ export interface RepoQualityData {
   highestStarRepo: number
 }
 
-/** Reaction type classification */
+/** Reaction type classification (GraphQL enum values) */
 export type ReactionType =
-  | '+1'
-  | '-1'
-  | 'laugh'
-  | 'confused'
-  | 'heart'
-  | 'hooray'
-  | 'rocket'
-  | 'eyes'
+  | 'THUMBS_UP'
+  | 'THUMBS_DOWN'
+  | 'LAUGH'
+  | 'CONFUSED'
+  | 'HEART'
+  | 'HOORAY'
+  | 'ROCKET'
+  | 'EYES'
 
 /** Positive reaction types */
 export const POSITIVE_REACTIONS: ReactionType[] = [
-  '+1',
-  'heart',
-  'rocket',
-  'hooray'
+  'THUMBS_UP',
+  'HEART',
+  'ROCKET',
+  'HOORAY'
 ]
 
 /** Negative reaction types */
-export const NEGATIVE_REACTIONS: ReactionType[] = ['-1', 'confused']
+export const NEGATIVE_REACTIONS: ReactionType[] = ['THUMBS_DOWN', 'CONFUSED']
 
 /** Reaction analysis data */
 export interface ReactionData {
@@ -176,10 +173,4 @@ export interface AllMetricsData {
   account: AccountData
   issueEngagement: IssueEngagementData
   codeReviews: CodeReviewData
-}
-
-/** Interface for metric calculators */
-export interface MetricCalculator<T> {
-  /** Calculate metric from raw data */
-  calculate(data: T, weight: number): MetricResult
 }

@@ -4,13 +4,14 @@
 MD004:
   style: dash
 
-# Disable line length for tables
+# Line length (match prettier printWidth)
 MD013:
+  line_length: 120
   tables: false
 
-# Ordered list item prefix
+# Ordered list item prefix (one_or_ordered allows lists interrupted by code blocks)
 MD029:
-  style: one
+  style: one_or_ordered
 
 # Spaces after list markers
 MD030:

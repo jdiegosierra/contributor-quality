@@ -95,25 +95,6 @@ export const qualityContributorResponse: GraphQLContributorData = {
         endCursor: null
       }
     },
-    issues: {
-      totalCount: 10,
-      nodes: [
-        {
-          createdAt: new Date(
-            Date.now() - 14 * 24 * 60 * 60 * 1000
-          ).toISOString(),
-          comments: { totalCount: 5 },
-          reactions: { totalCount: 8 }
-        },
-        {
-          createdAt: new Date(
-            Date.now() - 60 * 24 * 60 * 60 * 1000
-          ).toISOString(),
-          comments: { totalCount: 3 },
-          reactions: { totalCount: 2 }
-        }
-      ]
-    },
     contributionsCollection: {
       contributionCalendar: {
         totalContributions: 500,
@@ -137,10 +118,47 @@ export const qualityContributorResponse: GraphQLContributorData = {
           Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000
         ).toISOString(),
         reactions: {
-          nodes: [{ content: '+1' as const }, { content: 'heart' as const }]
+          nodes: [
+            { content: 'THUMBS_UP' as const },
+            { content: 'HEART' as const }
+          ]
         }
-      }))
+      })),
+      pageInfo: { hasNextPage: false, endCursor: null }
     }
+  },
+  issueSearch: {
+    issueCount: 10,
+    nodes: [
+      {
+        __typename: 'Issue' as const,
+        createdAt: new Date(
+          Date.now() - 14 * 24 * 60 * 60 * 1000
+        ).toISOString(),
+        comments: { totalCount: 5 },
+        reactions: {
+          nodes: [
+            { content: 'THUMBS_UP' as const },
+            { content: 'HEART' as const },
+            { content: 'THUMBS_UP' as const },
+            { content: 'ROCKET' as const }
+          ]
+        }
+      },
+      {
+        __typename: 'Issue' as const,
+        createdAt: new Date(
+          Date.now() - 60 * 24 * 60 * 60 * 1000
+        ).toISOString(),
+        comments: { totalCount: 3 },
+        reactions: {
+          nodes: [
+            { content: 'THUMBS_UP' as const },
+            { content: 'HEART' as const }
+          ]
+        }
+      }
+    ]
   }
 }
 
@@ -165,17 +183,13 @@ export const spamContributorResponse: GraphQLContributorData = {
         repository: {
           owner: { login: 'random' },
           name: `repo-${i}`,
-          stargazerCount: 5
+          stargazerCount: 10
         }
       })) as GraphQLContributorData['user']['pullRequests']['nodes'],
       pageInfo: {
         hasNextPage: false,
         endCursor: null
       }
-    },
-    issues: {
-      totalCount: 0,
-      nodes: []
     },
     contributionsCollection: {
       contributionCalendar: {
@@ -200,10 +214,18 @@ export const spamContributorResponse: GraphQLContributorData = {
       nodes: Array.from({ length: 5 }, () => ({
         createdAt: new Date().toISOString(),
         reactions: {
-          nodes: [{ content: '-1' as const }, { content: 'confused' as const }]
+          nodes: [
+            { content: 'THUMBS_DOWN' as const },
+            { content: 'CONFUSED' as const }
+          ]
         }
-      }))
+      })),
+      pageInfo: { hasNextPage: false, endCursor: null }
     }
+  },
+  issueSearch: {
+    issueCount: 0,
+    nodes: []
   }
 }
 
@@ -211,7 +233,7 @@ export const spamContributorResponse: GraphQLContributorData = {
 export const newUserResponse: GraphQLContributorData = {
   user: {
     login: 'new-user',
-    createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(), // 10 days ago
+    createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days ago
     pullRequests: {
       totalCount: 0,
       nodes: [],
@@ -219,10 +241,6 @@ export const newUserResponse: GraphQLContributorData = {
         hasNextPage: false,
         endCursor: null
       }
-    },
-    issues: {
-      totalCount: 0,
-      nodes: []
     },
     contributionsCollection: {
       contributionCalendar: {
@@ -235,7 +253,12 @@ export const newUserResponse: GraphQLContributorData = {
     },
     issueComments: {
       totalCount: 0,
-      nodes: []
+      nodes: [],
+      pageInfo: { hasNextPage: false, endCursor: null }
     }
+  },
+  issueSearch: {
+    issueCount: 0,
+    nodes: []
   }
 }

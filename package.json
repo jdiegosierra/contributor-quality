@@ -35,27 +35,43 @@
     "format:write": "pnpm exec prettier --write .",
     "format:check": "pnpm exec prettier --check .",
     "lint": "pnpm exec eslint .",
+    "lint:md": "pnpm exec markdownlint '**/*.md' --ignore node_modules",
+    "lint:all": "pnpm run lint && pnpm run lint:md && pnpm run format:check",
     "local-action": "pnpm exec local-action . src/main.ts .env",
     "package": "pnpm exec rimraf ./dist && pnpm exec rollup --config rollup.config.ts --configPlugin @rollup/plugin-typescript",
     "package:watch": "pnpm run package -- --watch",
     "test": "NODE_OPTIONS=--experimental-vm-modules NODE_NO_WARNINGS=1 pnpm exec jest",
-    "all": "pnpm run format:write && pnpm run lint && pnpm run test && pnpm run coverage && pnpm run package"
+    "all": "pnpm run format:write && pnpm run lint && pnpm run test && pnpm run coverage && pnpm run package",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{js,ts,mjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.md": [
+      "markdownlint --fix",
+      "prettier --write"
+    ],
+    "*.{json,yml,yaml}": [
+      "prettier --write"
+    ]
   },
   "license": "MIT",
   "dependencies": {
-    "@actions/core": "^1.11.1",
-    "@actions/github": "^6.0.0"
+    "@actions/core": "^2.0.3",
+    "@actions/github": "^9.0.0"
   },
   "devDependencies": {
     "@eslint/compat": "^1.4.0",
-    "@github/local-action": "^6.0.2",
+    "@github/local-action": "^7.0.0",
     "@jest/globals": "^30.2.0",
-    "@octokit/types": "^13.0.0",
+    "@octokit/types": "^16.0.0",
     "@rollup/plugin-commonjs": "^29.0.0",
     "@rollup/plugin-node-resolve": "^16.0.3",
     "@rollup/plugin-typescript": "^12.3.0",
     "@types/jest": "^30.0.0",
-    "@types/node": "^22.0.0",
+    "@types/node": "^25.1.0",
     "@typescript-eslint/eslint-plugin": "^8.50.0",
     "@typescript-eslint/parser": "^8.32.1",
     "eslint": "^9.39.2",
@@ -65,8 +81,11 @@
     "eslint-plugin-jest": "^29.8.0",
     "eslint-plugin-prettier": "^5.5.4",
     "globals": "^17.2.0",
+    "husky": "^9.1.7",
     "jest": "^30.2.0",
+    "lint-staged": "^16.2.7",
     "make-coverage-badge": "^1.2.0",
+    "markdownlint-cli": "^0.47.0",
     "prettier": "^3.7.4",
     "prettier-eslint": "^16.4.2",
     "rimraf": "^6.0.0",
