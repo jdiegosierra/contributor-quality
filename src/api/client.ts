@@ -99,7 +99,7 @@ export class GitHubClient {
     // Build issue search query to find issues created by user
     // Note: -is:pr is needed because GitHub search can return PRs even with type:ISSUE
     const issueSearchQuery = `author:${username} is:issue -is:pr created:>=${sinceDate.toISOString().split('T')[0]}`
-    core.debug(`Issue search query: ${issueSearchQuery}`)
+    console.log(`[DEBUG] Issue search query: ${issueSearchQuery}`)
 
     const result = await this.executeGraphQL<GraphQLContributorData>(
       CONTRIBUTOR_DATA_QUERY,
@@ -116,9 +116,16 @@ export class GitHubClient {
       throw new Error(`User not found: ${username}`)
     }
 
-    core.info(
-      `Issue search returned: ${result.issueSearch?.issueCount ?? 0} issues, ${result.issueSearch?.nodes?.length ?? 0} nodes`
+    console.log(
+      `[DEBUG] Issue search returned: issueCount=${result.issueSearch?.issueCount ?? 0}, nodes=${result.issueSearch?.nodes?.length ?? 0}`
     )
+    if (result.issueSearch?.nodes?.length) {
+      for (const node of result.issueSearch.nodes) {
+        console.log(
+          `[DEBUG] Node: __typename=${(node as { __typename?: string }).__typename}, keys=${Object.keys(node).join(',')}`
+        )
+      }
+    }
 
     // Handle pagination for PRs if needed
     let allPRs = [...result.user.pullRequests.nodes]
