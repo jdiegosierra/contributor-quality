@@ -35301,6 +35301,7 @@ query ContributorAnalysis($username: String!, $since: DateTime!, $prCursor: Stri
   issueSearch: search(query: $issueSearchQuery, type: ISSUE, first: 50) {
     issueCount
     nodes {
+      __typename
       ... on Issue {
         createdAt
         comments { totalCount }
@@ -35976,10 +35977,9 @@ const NEGATIVE_REACTIONS = ['THUMBS_DOWN', 'CONFUSED'];
  */
 function extractReactionData(data) {
     const comments = data.user.issueComments.nodes ?? [];
-    // Filter out empty objects from GraphQL search (fragment spread can return empty objects)
-    const issues = (data.issueSearch?.nodes ?? []).filter((issue) => issue.reactions?.nodes);
+    // Filter to only include Issue types with reactions
+    const issues = (data.issueSearch?.nodes ?? []).filter((issue) => issue.__typename === 'Issue' && issue.reactions?.nodes);
     // Debug: log reaction sources
-    // eslint-disable-next-line no-console
     console.log(`[DEBUG] Reaction sources: ${comments.length} comments, ${issues.length} issues`);
     let positiveCount = 0;
     let negativeCount = 0;
@@ -36213,15 +36213,14 @@ function extractIssueEngagementData(data) {
     // Issues from search are already filtered by date in the query
     // Filter out empty objects from GraphQL search (fragment spread can return empty objects)
     const rawNodes = data.issueSearch?.nodes ?? [];
-    const issues = rawNodes.filter((issue) => issue.comments && issue.reactions);
+    // Filter to only include Issue types with expected properties
+    const issues = rawNodes.filter((issue) => issue.__typename === 'Issue' && issue.comments && issue.reactions);
     // Debug: log issue search results
-    // eslint-disable-next-line no-console
     console.log(`[DEBUG] Issue search: ${rawNodes.length} raw nodes, ${issues.length} valid issues`);
     // Log first node structure if any
     if (rawNodes.length > 0) {
         const firstNode = rawNodes[0];
-        // eslint-disable-next-line no-console
-        console.log(`[DEBUG] First node keys: ${Object.keys(firstNode).join(', ') || '(empty object)'}`);
+        console.log(`[DEBUG] First node: __typename=${firstNode.__typename || 'undefined'}, keys=${Object.keys(firstNode).join(', ') || '(empty)'}`);
     }
     const issuesWithComments = issues.filter((issue) => issue.comments.totalCount > 0).length;
     const issuesWithReactions = issues.filter((issue) => issue.reactions.nodes.length > 0).length;

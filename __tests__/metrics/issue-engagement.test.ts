@@ -35,6 +35,7 @@ describe('Issue Engagement Metric', () => {
           issueCount: 3,
           nodes: [
             {
+              __typename: 'Issue' as const,
               createdAt: new Date().toISOString(),
               comments: { totalCount: 5 },
               reactions: {
@@ -42,11 +43,13 @@ describe('Issue Engagement Metric', () => {
               }
             },
             {
+              __typename: 'Issue' as const,
               createdAt: new Date().toISOString(),
               comments: { totalCount: 2 },
               reactions: { nodes: [] }
             },
             {
+              __typename: 'Issue' as const,
               createdAt: new Date().toISOString(),
               comments: { totalCount: 0 },
               reactions: { nodes: [] }

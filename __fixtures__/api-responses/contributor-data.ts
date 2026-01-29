@@ -131,6 +131,7 @@ export const qualityContributorResponse: GraphQLContributorData = {
     issueCount: 10,
     nodes: [
       {
+        __typename: 'Issue' as const,
         createdAt: new Date(
           Date.now() - 14 * 24 * 60 * 60 * 1000
         ).toISOString(),
@@ -145,6 +146,7 @@ export const qualityContributorResponse: GraphQLContributorData = {
         }
       },
       {
+        __typename: 'Issue' as const,
         createdAt: new Date(
           Date.now() - 60 * 24 * 60 * 60 * 1000
         ).toISOString(),

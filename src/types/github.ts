@@ -153,9 +153,10 @@ export interface GraphQLContributorData {
   issueSearch: {
     issueCount: number
     nodes: Array<{
-      createdAt: string
-      comments: { totalCount: number }
-      reactions: {
+      __typename?: string
+      createdAt?: string
+      comments?: { totalCount: number }
+      reactions?: {
         nodes: Array<{
           content: GitHubReactionContent
         }>

@@ -79,6 +79,7 @@ query ContributorAnalysis($username: String!, $since: DateTime!, $prCursor: Stri
   issueSearch: search(query: $issueSearchQuery, type: ISSUE, first: 50) {
     issueCount
     nodes {
+      __typename
       ... on Issue {
         createdAt
         comments { totalCount }

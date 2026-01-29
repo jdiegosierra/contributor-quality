@@ -17,9 +17,9 @@ export function extractReactionData(
   data: GraphQLContributorData
 ): ReactionData {
   const comments = data.user.issueComments.nodes ?? []
-  // Filter out empty objects from GraphQL search (fragment spread can return empty objects)
+  // Filter to only include Issue types with reactions
   const issues = (data.issueSearch?.nodes ?? []).filter(
-    (issue) => issue.reactions?.nodes
+    (issue) => issue.__typename === 'Issue' && issue.reactions?.nodes
   )
 
   // Debug: log reaction sources
