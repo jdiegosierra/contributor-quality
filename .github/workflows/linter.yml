@@ -67,3 +67,4 @@ jobs:
           VALIDATE_JSON: false
           VALIDATE_ENV: false
           VALIDATE_NATURAL_LANGUAGE: false
+          VALIDATE_SPELL_CODESPELL: false
