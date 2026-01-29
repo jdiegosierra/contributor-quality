@@ -17,7 +17,10 @@ export function extractIssueEngagementData(
   data: GraphQLContributorData
 ): IssueEngagementData {
   // Issues from search are already filtered by date in the query
-  const issues = data.issueSearch.nodes
+  // Filter out empty objects from GraphQL search (fragment spread can return empty objects)
+  const issues = (data.issueSearch?.nodes ?? []).filter(
+    (issue) => issue.comments && issue.reactions
+  )
 
   const issuesWithComments = issues.filter(
     (issue) => issue.comments.totalCount > 0

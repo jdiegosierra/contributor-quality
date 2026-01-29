@@ -16,8 +16,11 @@ import { POSITIVE_REACTIONS, NEGATIVE_REACTIONS } from '../types/metrics.js'
 export function extractReactionData(
   data: GraphQLContributorData
 ): ReactionData {
-  const comments = data.user.issueComments.nodes
-  const issues = data.issueSearch.nodes
+  const comments = data.user.issueComments.nodes ?? []
+  // Filter out empty objects from GraphQL search (fragment spread can return empty objects)
+  const issues = (data.issueSearch?.nodes ?? []).filter(
+    (issue) => issue.reactions?.nodes
+  )
 
   let positiveCount = 0
   let negativeCount = 0

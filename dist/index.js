@@ -35975,8 +35975,9 @@ const NEGATIVE_REACTIONS = ['-1', 'confused'];
  * Counts reactions from both issue comments and issues created by the user
  */
 function extractReactionData(data) {
-    const comments = data.user.issueComments.nodes;
-    const issues = data.issueSearch.nodes;
+    const comments = data.user.issueComments.nodes ?? [];
+    // Filter out empty objects from GraphQL search (fragment spread can return empty objects)
+    const issues = (data.issueSearch?.nodes ?? []).filter((issue) => issue.reactions?.nodes);
     let positiveCount = 0;
     let negativeCount = 0;
     let neutralCount = 0;
@@ -36207,7 +36208,8 @@ function isNewAccount(data, thresholdDays) {
  */
 function extractIssueEngagementData(data) {
     // Issues from search are already filtered by date in the query
-    const issues = data.issueSearch.nodes;
+    // Filter out empty objects from GraphQL search (fragment spread can return empty objects)
+    const issues = (data.issueSearch?.nodes ?? []).filter((issue) => issue.comments && issue.reactions);
     const issuesWithComments = issues.filter((issue) => issue.comments.totalCount > 0).length;
     const issuesWithReactions = issues.filter((issue) => issue.reactions.nodes.length > 0).length;
     const totalComments = issues.reduce((sum, issue) => sum + issue.comments.totalCount, 0);
