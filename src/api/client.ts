@@ -98,6 +98,7 @@ export class GitHubClient {
 
     // Build issue search query to find issues created by user
     const issueSearchQuery = `author:${username} is:issue created:>=${sinceDate.toISOString().split('T')[0]}`
+    core.debug(`Issue search query: ${issueSearchQuery}`)
 
     const result = await this.executeGraphQL<GraphQLContributorData>(
       CONTRIBUTOR_DATA_QUERY,
@@ -113,6 +114,10 @@ export class GitHubClient {
     if (!result.user) {
       throw new Error(`User not found: ${username}`)
     }
+
+    core.debug(
+      `Issue search returned: ${result.issueSearch?.issueCount ?? 0} issues`
+    )
 
     // Handle pagination for PRs if needed
     let allPRs = [...result.user.pullRequests.nodes]
@@ -173,7 +178,9 @@ export class GitHubClient {
       pagesLoaded++
     }
 
-    // Return aggregated data
+    // Return aggregated data with safeguards for search results
+    const issueSearch = result.issueSearch ?? { issueCount: 0, nodes: [] }
+
     return {
       user: {
         ...result.user,
@@ -188,7 +195,10 @@ export class GitHubClient {
           totalCount: allComments.length
         }
       },
-      issueSearch: result.issueSearch
+      issueSearch: {
+        issueCount: issueSearch.issueCount ?? 0,
+        nodes: issueSearch.nodes ?? []
+      }
     }
   }
 

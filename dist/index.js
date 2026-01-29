@@ -35544,6 +35544,7 @@ class GitHubClient {
         coreExports.info(`Fetching contributor data for ${username}`);
         // Build issue search query to find issues created by user
         const issueSearchQuery = `author:${username} is:issue created:>=${sinceDate.toISOString().split('T')[0]}`;
+        coreExports.debug(`Issue search query: ${issueSearchQuery}`);
         const result = await this.executeGraphQL(CONTRIBUTOR_DATA_QUERY, {
             username,
             since: sinceDate.toISOString(),
@@ -35554,6 +35555,7 @@ class GitHubClient {
         if (!result.user) {
             throw new Error(`User not found: ${username}`);
         }
+        coreExports.debug(`Issue search returned: ${result.issueSearch?.issueCount ?? 0} issues`);
         // Handle pagination for PRs if needed
         let allPRs = [...result.user.pullRequests.nodes];
         let prPageInfo = result.user.pullRequests.pageInfo;
@@ -35598,7 +35600,8 @@ class GitHubClient {
             }
             pagesLoaded++;
         }
-        // Return aggregated data
+        // Return aggregated data with safeguards for search results
+        const issueSearch = result.issueSearch ?? { issueCount: 0, nodes: [] };
         return {
             user: {
                 ...result.user,
@@ -35613,7 +35616,10 @@ class GitHubClient {
                     totalCount: allComments.length
                 }
             },
-            issueSearch: result.issueSearch
+            issueSearch: {
+                issueCount: issueSearch.issueCount ?? 0,
+                nodes: issueSearch.nodes ?? []
+            }
         };
     }
     /**
