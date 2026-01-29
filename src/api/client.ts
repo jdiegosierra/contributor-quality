@@ -97,8 +97,8 @@ export class GitHubClient {
     core.info(`Fetching contributor data for ${username}`)
 
     // Build issue search query to find issues created by user
-    // Note: GraphQL type:ISSUE includes both Issues and PRs, so we use type:issue in query to get only issues
-    const issueSearchQuery = `author:${username} type:issue created:>=${sinceDate.toISOString().split('T')[0]}`
+    // Using ISSUE_ADVANCED type with is:issue to properly filter out PRs
+    const issueSearchQuery = `author:${username} is:issue created:>=${sinceDate.toISOString().split('T')[0]}`
     console.log(`[DEBUG] Issue search query: ${issueSearchQuery}`)
 
     const result = await this.executeGraphQL<GraphQLContributorData>(

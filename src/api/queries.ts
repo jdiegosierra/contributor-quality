@@ -76,7 +76,8 @@ query ContributorAnalysis($username: String!, $since: DateTime!, $prCursor: Stri
   }
 
   # Search for issues created by the user (works across all repos)
-  issueSearch: search(query: $issueSearchQuery, type: ISSUE, first: 50) {
+  # Using ISSUE_ADVANCED type (introduced March 2025) for proper is:issue filtering
+  issueSearch: search(query: $issueSearchQuery, type: ISSUE_ADVANCED, first: 50) {
     issueCount
     nodes {
       __typename
