@@ -52,23 +52,6 @@ describe('Evaluation Engine', () => {
             ],
             pageInfo: { hasNextPage: false, endCursor: null }
           },
-          issues: {
-            totalCount: 2,
-            nodes: [
-              {
-                createdAt: new Date().toISOString(),
-                comments: { totalCount: 3 },
-                reactions: {
-                  nodes: [
-                    { content: '+1' },
-                    { content: 'heart' },
-                    { content: '+1' }
-                  ]
-                }
-              }
-            ],
-            pageInfo: { hasNextPage: false, endCursor: null }
-          },
           contributionsCollection: {
             contributionCalendar: {
               totalContributions: 100,
@@ -90,6 +73,22 @@ describe('Evaluation Engine', () => {
             ],
             pageInfo: { hasNextPage: false, endCursor: null }
           }
+        },
+        issueSearch: {
+          issueCount: 2,
+          nodes: [
+            {
+              createdAt: new Date().toISOString(),
+              comments: { totalCount: 3 },
+              reactions: {
+                nodes: [
+                  { content: '+1' },
+                  { content: 'heart' },
+                  { content: '+1' }
+                ]
+              }
+            }
+          ]
         }
       }
 

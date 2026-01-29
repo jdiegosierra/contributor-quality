@@ -35226,7 +35226,7 @@ function getOctokit(token, options, ...additionalPlugins) {
  */
 /** Main query to fetch contributor metrics */
 const CONTRIBUTOR_DATA_QUERY = `
-query ContributorAnalysis($username: String!, $since: DateTime!, $prCursor: String, $issueCursor: String, $commentCursor: String) {
+query ContributorAnalysis($username: String!, $since: DateTime!, $prCursor: String, $commentCursor: String, $issueSearchQuery: String!) {
   user(login: $username) {
     login
     createdAt
@@ -35253,28 +35253,6 @@ query ContributorAnalysis($username: String!, $since: DateTime!, $prCursor: Stri
         }
         reviews(first: 1) {
           totalCount
-        }
-      }
-      pageInfo {
-        hasNextPage
-        endCursor
-      }
-    }
-
-    issues(
-      first: 50
-      orderBy: {field: CREATED_AT, direction: DESC}
-      filterBy: {createdBy: $username}
-      after: $issueCursor
-    ) {
-      totalCount
-      nodes {
-        createdAt
-        comments { totalCount }
-        reactions(first: 20) {
-          nodes {
-            content
-          }
         }
       }
       pageInfo {
@@ -35315,6 +35293,22 @@ query ContributorAnalysis($username: String!, $since: DateTime!, $prCursor: Stri
       pageInfo {
         hasNextPage
         endCursor
+      }
+    }
+  }
+
+  # Search for issues created by the user (works across all repos)
+  issueSearch: search(query: $issueSearchQuery, type: ISSUE, first: 50) {
+    issueCount
+    nodes {
+      ... on Issue {
+        createdAt
+        comments { totalCount }
+        reactions(first: 20) {
+          nodes {
+            content
+          }
+        }
       }
     }
   }
@@ -35548,12 +35542,14 @@ class GitHubClient {
      */
     async fetchContributorData(username, sinceDate) {
         coreExports.info(`Fetching contributor data for ${username}`);
+        // Build issue search query to find issues created by user
+        const issueSearchQuery = `author:${username} is:issue created:>=${sinceDate.toISOString().split('T')[0]}`;
         const result = await this.executeGraphQL(CONTRIBUTOR_DATA_QUERY, {
             username,
             since: sinceDate.toISOString(),
             prCursor: null,
-            issueCursor: null,
-            commentCursor: null
+            commentCursor: null,
+            issueSearchQuery
         });
         if (!result.user) {
             throw new Error(`User not found: ${username}`);
@@ -35569,8 +35565,8 @@ class GitHubClient {
                 username,
                 since: sinceDate.toISOString(),
                 prCursor: prPageInfo.endCursor,
-                issueCursor: null,
-                commentCursor: null
+                commentCursor: null,
+                issueSearchQuery
             });
             if (nextPage.user) {
                 allPRs = [...allPRs, ...nextPage.user.pullRequests.nodes];
@@ -35583,25 +35579,6 @@ class GitHubClient {
             const prDate = new Date(pr.createdAt);
             return prDate >= sinceDate;
         });
-        // Handle pagination for Issues
-        let allIssues = [...result.user.issues.nodes];
-        let issuePageInfo = result.user.issues.pageInfo;
-        pagesLoaded = 1;
-        while (issuePageInfo.hasNextPage && pagesLoaded < maxPages) {
-            coreExports.debug(`Fetching additional Issues page ${pagesLoaded + 1}`);
-            const nextPage = await this.executeGraphQL(CONTRIBUTOR_DATA_QUERY, {
-                username,
-                since: sinceDate.toISOString(),
-                prCursor: null,
-                issueCursor: issuePageInfo.endCursor,
-                commentCursor: null
-            });
-            if (nextPage.user) {
-                allIssues = [...allIssues, ...nextPage.user.issues.nodes];
-                issuePageInfo = nextPage.user.issues.pageInfo;
-            }
-            pagesLoaded++;
-        }
         // Handle pagination for Comments
         let allComments = [...result.user.issueComments.nodes];
         let commentPageInfo = result.user.issueComments.pageInfo;
@@ -35612,8 +35589,8 @@ class GitHubClient {
                 username,
                 since: sinceDate.toISOString(),
                 prCursor: null,
-                issueCursor: null,
-                commentCursor: commentPageInfo.endCursor
+                commentCursor: commentPageInfo.endCursor,
+                issueSearchQuery
             });
             if (nextPage.user) {
                 allComments = [...allComments, ...nextPage.user.issueComments.nodes];
@@ -35630,17 +35607,13 @@ class GitHubClient {
                     nodes: filteredPRs,
                     totalCount: filteredPRs.length
                 },
-                issues: {
-                    ...result.user.issues,
-                    nodes: allIssues,
-                    totalCount: allIssues.length
-                },
                 issueComments: {
                     ...result.user.issueComments,
                     nodes: allComments,
                     totalCount: allComments.length
                 }
-            }
+            },
+            issueSearch: result.issueSearch
         };
     }
     /**
@@ -35997,7 +35970,7 @@ const NEGATIVE_REACTIONS = ['-1', 'confused'];
  */
 function extractReactionData(data) {
     const comments = data.user.issueComments.nodes;
-    const issues = data.user.issues.nodes;
+    const issues = data.issueSearch.nodes;
     let positiveCount = 0;
     let negativeCount = 0;
     let neutralCount = 0;
@@ -36016,7 +35989,7 @@ function extractReactionData(data) {
             }
         }
     }
-    // Count reactions from issues created by the user
+    // Count reactions from issues created by the user (from search results)
     for (const issue of issues) {
         for (const reaction of issue.reactions.nodes) {
             const content = reaction.content;
@@ -36223,14 +36196,14 @@ function isNewAccount(data, thresholdDays) {
  */
 /**
  * Extract issue engagement data from GraphQL response
+ * Uses issueSearch results which include issues from all repositories
+ * Note: Date filtering is done in the GraphQL search query, not here
  */
-function extractIssueEngagementData(data, sinceDate) {
-    const issues = data.user.issues.nodes.filter((issue) => {
-        const issueDate = new Date(issue.createdAt);
-        return issueDate >= sinceDate;
-    });
+function extractIssueEngagementData(data) {
+    // Issues from search are already filtered by date in the query
+    const issues = data.issueSearch.nodes;
     const issuesWithComments = issues.filter((issue) => issue.comments.totalCount > 0).length;
-    const issuesWithReactions = issues.filter((issue) => issue.reactions.totalCount > 0).length;
+    const issuesWithReactions = issues.filter((issue) => issue.reactions.nodes.length > 0).length;
     const totalComments = issues.reduce((sum, issue) => sum + issue.comments.totalCount, 0);
     const averageCommentsPerIssue = issues.length > 0 ? totalComments / issues.length : 0;
     return {
@@ -36339,7 +36312,7 @@ function extractAllMetrics(data, config, sinceDate) {
         repoQuality: extractRepoQualityData(data, config.minimumStars, sinceDate),
         reactions: extractReactionData(data),
         account: extractAccountData(data, config.analysisWindowMonths),
-        issueEngagement: extractIssueEngagementData(data, sinceDate),
+        issueEngagement: extractIssueEngagementData(data),
         codeReviews: extractCodeReviewData(data)
     };
 }

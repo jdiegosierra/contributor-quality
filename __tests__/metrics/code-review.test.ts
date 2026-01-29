@@ -21,11 +21,7 @@ describe('Code Review Metric', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           },
-          issues: {
-            totalCount: 0,
-            nodes: [],
-            pageInfo: { hasNextPage: false, endCursor: null }
-          },
+
           contributionsCollection: {
             contributionCalendar: { totalContributions: 0, weeks: [] },
             pullRequestReviewContributions: { totalCount: 15 }
@@ -35,7 +31,8 @@ describe('Code Review Metric', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           }
-        }
+        },
+        issueSearch: { issueCount: 0, nodes: [] }
       }
 
       const result = extractCodeReviewData(data)
@@ -53,11 +50,7 @@ describe('Code Review Metric', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           },
-          issues: {
-            totalCount: 0,
-            nodes: [],
-            pageInfo: { hasNextPage: false, endCursor: null }
-          },
+
           contributionsCollection: {
             contributionCalendar: { totalContributions: 0, weeks: [] },
             pullRequestReviewContributions: { totalCount: 0 }
@@ -67,7 +60,8 @@ describe('Code Review Metric', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           }
-        }
+        },
+        issueSearch: { issueCount: 0, nodes: [] }
       }
 
       const result = extractCodeReviewData(data)

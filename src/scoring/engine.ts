@@ -39,7 +39,7 @@ export function extractAllMetrics(
     repoQuality: extractRepoQualityData(data, config.minimumStars, sinceDate),
     reactions: extractReactionData(data),
     account: extractAccountData(data, config.analysisWindowMonths),
-    issueEngagement: extractIssueEngagementData(data, sinceDate),
+    issueEngagement: extractIssueEngagementData(data),
     codeReviews: extractCodeReviewData(data)
   }
 }

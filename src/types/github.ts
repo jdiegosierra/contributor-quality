@@ -120,22 +120,6 @@ export interface GraphQLContributorData {
         endCursor: string | null
       }
     }
-    issues: {
-      totalCount: number
-      nodes: Array<{
-        createdAt: string
-        comments: { totalCount: number }
-        reactions: {
-          nodes: Array<{
-            content: GitHubReactionContent
-          }>
-        }
-      }>
-      pageInfo: {
-        hasNextPage: boolean
-        endCursor: string | null
-      }
-    }
     contributionsCollection: {
       contributionCalendar: {
         totalContributions: number
@@ -164,6 +148,19 @@ export interface GraphQLContributorData {
         endCursor: string | null
       }
     }
+  }
+  /** Issues created by the user (from search API) */
+  issueSearch: {
+    issueCount: number
+    nodes: Array<{
+      createdAt: string
+      comments: { totalCount: number }
+      reactions: {
+        nodes: Array<{
+          content: GitHubReactionContent
+        }>
+      }
+    }>
   }
 }
 

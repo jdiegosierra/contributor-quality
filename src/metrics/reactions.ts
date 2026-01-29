@@ -17,7 +17,7 @@ export function extractReactionData(
   data: GraphQLContributorData
 ): ReactionData {
   const comments = data.user.issueComments.nodes
-  const issues = data.user.issues.nodes
+  const issues = data.issueSearch.nodes
 
   let positiveCount = 0
   let negativeCount = 0
@@ -46,7 +46,7 @@ export function extractReactionData(
     }
   }
 
-  // Count reactions from issues created by the user
+  // Count reactions from issues created by the user (from search results)
   for (const issue of issues) {
     for (const reaction of issue.reactions.nodes) {
       const content = reaction.content as GitHubReactionContent

@@ -22,11 +22,6 @@ describe('Reactions Metrics', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           },
-          issues: {
-            totalCount: 0,
-            nodes: [],
-            pageInfo: { hasNextPage: false, endCursor: null }
-          },
           contributionsCollection: {
             contributionCalendar: { totalContributions: 0, weeks: [] },
             pullRequestReviewContributions: { totalCount: 0 }
@@ -42,6 +37,10 @@ describe('Reactions Metrics', () => {
             ],
             pageInfo: { hasNextPage: false, endCursor: null }
           }
+        },
+        issueSearch: {
+          issueCount: 0,
+          nodes: []
         }
       }
 
@@ -63,11 +62,6 @@ describe('Reactions Metrics', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           },
-          issues: {
-            totalCount: 0,
-            nodes: [],
-            pageInfo: { hasNextPage: false, endCursor: null }
-          },
           contributionsCollection: {
             contributionCalendar: { totalContributions: 0, weeks: [] },
             pullRequestReviewContributions: { totalCount: 0 }
@@ -77,6 +71,10 @@ describe('Reactions Metrics', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           }
+        },
+        issueSearch: {
+          issueCount: 0,
+          nodes: []
         }
       }
 

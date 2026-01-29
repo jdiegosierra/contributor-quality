@@ -10,22 +10,21 @@ import type {
 
 /**
  * Extract issue engagement data from GraphQL response
+ * Uses issueSearch results which include issues from all repositories
+ * Note: Date filtering is done in the GraphQL search query, not here
  */
 export function extractIssueEngagementData(
-  data: GraphQLContributorData,
-  sinceDate: Date
+  data: GraphQLContributorData
 ): IssueEngagementData {
-  const issues = data.user.issues.nodes.filter((issue) => {
-    const issueDate = new Date(issue.createdAt)
-    return issueDate >= sinceDate
-  })
+  // Issues from search are already filtered by date in the query
+  const issues = data.issueSearch.nodes
 
   const issuesWithComments = issues.filter(
     (issue) => issue.comments.totalCount > 0
   ).length
 
   const issuesWithReactions = issues.filter(
-    (issue) => issue.reactions.totalCount > 0
+    (issue) => issue.reactions.nodes.length > 0
   ).length
 
   const totalComments = issues.reduce(

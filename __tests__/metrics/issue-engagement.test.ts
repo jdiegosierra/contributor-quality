@@ -10,8 +10,6 @@ import type { GraphQLContributorData } from '../../src/types/github.js'
 import type { IssueEngagementData } from '../../src/types/metrics.js'
 
 describe('Issue Engagement Metric', () => {
-  const sinceDate = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)
-
   describe('extractIssueEngagementData', () => {
     it('counts issues and engagement correctly', () => {
       const data: GraphQLContributorData = {
@@ -23,27 +21,6 @@ describe('Issue Engagement Metric', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           },
-          issues: {
-            totalCount: 3,
-            nodes: [
-              {
-                createdAt: new Date().toISOString(),
-                comments: { totalCount: 5 },
-                reactions: { totalCount: 3 }
-              },
-              {
-                createdAt: new Date().toISOString(),
-                comments: { totalCount: 2 },
-                reactions: { totalCount: 0 }
-              },
-              {
-                createdAt: new Date().toISOString(),
-                comments: { totalCount: 0 },
-                reactions: { totalCount: 0 }
-              }
-            ],
-            pageInfo: { hasNextPage: false, endCursor: null }
-          },
           contributionsCollection: {
             contributionCalendar: { totalContributions: 0, weeks: [] },
             pullRequestReviewContributions: { totalCount: 0 }
@@ -53,10 +30,30 @@ describe('Issue Engagement Metric', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           }
+        },
+        issueSearch: {
+          issueCount: 3,
+          nodes: [
+            {
+              createdAt: new Date().toISOString(),
+              comments: { totalCount: 5 },
+              reactions: { nodes: [{ content: '+1' }, { content: 'heart' }] }
+            },
+            {
+              createdAt: new Date().toISOString(),
+              comments: { totalCount: 2 },
+              reactions: { nodes: [] }
+            },
+            {
+              createdAt: new Date().toISOString(),
+              comments: { totalCount: 0 },
+              reactions: { nodes: [] }
+            }
+          ]
         }
       }
 
-      const result = extractIssueEngagementData(data, sinceDate)
+      const result = extractIssueEngagementData(data)
 
       expect(result.issuesCreated).toBe(3)
       expect(result.issuesWithComments).toBe(2) // 2 with comments > 0
@@ -73,11 +70,6 @@ describe('Issue Engagement Metric', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           },
-          issues: {
-            totalCount: 0,
-            nodes: [],
-            pageInfo: { hasNextPage: false, endCursor: null }
-          },
           contributionsCollection: {
             contributionCalendar: { totalContributions: 0, weeks: [] },
             pullRequestReviewContributions: { totalCount: 0 }
@@ -87,10 +79,14 @@ describe('Issue Engagement Metric', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           }
+        },
+        issueSearch: {
+          issueCount: 0,
+          nodes: []
         }
       }
 
-      const result = extractIssueEngagementData(data, sinceDate)
+      const result = extractIssueEngagementData(data)
 
       expect(result.issuesCreated).toBe(0)
       expect(result.issuesWithComments).toBe(0)

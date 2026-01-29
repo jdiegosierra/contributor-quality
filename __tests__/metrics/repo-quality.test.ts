@@ -52,11 +52,7 @@ describe('Repo Quality Metric', () => {
             ],
             pageInfo: { hasNextPage: false, endCursor: null }
           },
-          issues: {
-            totalCount: 0,
-            nodes: [],
-            pageInfo: { hasNextPage: false, endCursor: null }
-          },
+
           contributionsCollection: {
             contributionCalendar: { totalContributions: 0, weeks: [] },
             pullRequestReviewContributions: { totalCount: 0 }
@@ -66,7 +62,8 @@ describe('Repo Quality Metric', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           }
-        }
+        },
+        issueSearch: { issueCount: 0, nodes: [] }
       }
 
       const result = extractRepoQualityData(data, 100, sinceDate)
@@ -101,11 +98,7 @@ describe('Repo Quality Metric', () => {
             ],
             pageInfo: { hasNextPage: false, endCursor: null }
           },
-          issues: {
-            totalCount: 0,
-            nodes: [],
-            pageInfo: { hasNextPage: false, endCursor: null }
-          },
+
           contributionsCollection: {
             contributionCalendar: { totalContributions: 0, weeks: [] },
             pullRequestReviewContributions: { totalCount: 0 }
@@ -115,7 +108,8 @@ describe('Repo Quality Metric', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           }
-        }
+        },
+        issueSearch: { issueCount: 0, nodes: [] }
       }
 
       const result = extractRepoQualityData(data, 100, sinceDate)

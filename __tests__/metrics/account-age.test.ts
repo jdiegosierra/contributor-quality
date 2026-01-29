@@ -26,11 +26,7 @@ describe('Account Age Metric', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           },
-          issues: {
-            totalCount: 0,
-            nodes: [],
-            pageInfo: { hasNextPage: false, endCursor: null }
-          },
+
           contributionsCollection: {
             contributionCalendar: {
               totalContributions: 0,
@@ -43,7 +39,8 @@ describe('Account Age Metric', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           }
-        }
+        },
+        issueSearch: { issueCount: 0, nodes: [] }
       }
 
       const result = extractAccountData(data, 12)
@@ -66,11 +63,7 @@ describe('Account Age Metric', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           },
-          issues: {
-            totalCount: 0,
-            nodes: [],
-            pageInfo: { hasNextPage: false, endCursor: null }
-          },
+
           contributionsCollection: {
             contributionCalendar: {
               totalContributions: 100,
@@ -100,7 +93,8 @@ describe('Account Age Metric', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           }
-        }
+        },
+        issueSearch: { issueCount: 0, nodes: [] }
       }
 
       const result = extractAccountData(data, 12)
@@ -119,11 +113,7 @@ describe('Account Age Metric', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           },
-          issues: {
-            totalCount: 0,
-            nodes: [],
-            pageInfo: { hasNextPage: false, endCursor: null }
-          },
+
           contributionsCollection: {
             contributionCalendar: {
               totalContributions: 0,
@@ -136,7 +126,8 @@ describe('Account Age Metric', () => {
             nodes: [],
             pageInfo: { hasNextPage: false, endCursor: null }
           }
-        }
+        },
+        issueSearch: { issueCount: 0, nodes: [] }
       }
 
       const result = extractAccountData(data, 12)
