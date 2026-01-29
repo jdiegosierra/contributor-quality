@@ -35555,7 +35555,7 @@ class GitHubClient {
         if (!result.user) {
             throw new Error(`User not found: ${username}`);
         }
-        coreExports.debug(`Issue search returned: ${result.issueSearch?.issueCount ?? 0} issues`);
+        coreExports.info(`Issue search returned: ${result.issueSearch?.issueCount ?? 0} issues, ${result.issueSearch?.nodes?.length ?? 0} nodes`);
         // Handle pagination for PRs if needed
         let allPRs = [...result.user.pullRequests.nodes];
         let prPageInfo = result.user.pullRequests.pageInfo;
@@ -35978,6 +35978,9 @@ function extractReactionData(data) {
     const comments = data.user.issueComments.nodes ?? [];
     // Filter out empty objects from GraphQL search (fragment spread can return empty objects)
     const issues = (data.issueSearch?.nodes ?? []).filter((issue) => issue.reactions?.nodes);
+    // Debug: log reaction sources
+    // eslint-disable-next-line no-console
+    console.log(`[DEBUG] Reaction sources: ${comments.length} comments, ${issues.length} issues`);
     let positiveCount = 0;
     let negativeCount = 0;
     let neutralCount = 0;
@@ -36209,7 +36212,17 @@ function isNewAccount(data, thresholdDays) {
 function extractIssueEngagementData(data) {
     // Issues from search are already filtered by date in the query
     // Filter out empty objects from GraphQL search (fragment spread can return empty objects)
-    const issues = (data.issueSearch?.nodes ?? []).filter((issue) => issue.comments && issue.reactions);
+    const rawNodes = data.issueSearch?.nodes ?? [];
+    const issues = rawNodes.filter((issue) => issue.comments && issue.reactions);
+    // Debug: log issue search results
+    // eslint-disable-next-line no-console
+    console.log(`[DEBUG] Issue search: ${rawNodes.length} raw nodes, ${issues.length} valid issues`);
+    // Log first node structure if any
+    if (rawNodes.length > 0) {
+        const firstNode = rawNodes[0];
+        // eslint-disable-next-line no-console
+        console.log(`[DEBUG] First node keys: ${Object.keys(firstNode).join(', ') || '(empty object)'}`);
+    }
     const issuesWithComments = issues.filter((issue) => issue.comments.totalCount > 0).length;
     const issuesWithReactions = issues.filter((issue) => issue.reactions.nodes.length > 0).length;
     const totalComments = issues.reduce((sum, issue) => sum + issue.comments.totalCount, 0);

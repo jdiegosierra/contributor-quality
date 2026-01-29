@@ -18,9 +18,22 @@ export function extractIssueEngagementData(
 ): IssueEngagementData {
   // Issues from search are already filtered by date in the query
   // Filter out empty objects from GraphQL search (fragment spread can return empty objects)
-  const issues = (data.issueSearch?.nodes ?? []).filter(
-    (issue) => issue.comments && issue.reactions
+  const rawNodes = data.issueSearch?.nodes ?? []
+  const issues = rawNodes.filter((issue) => issue.comments && issue.reactions)
+
+  // Debug: log issue search results
+
+  console.log(
+    `[DEBUG] Issue search: ${rawNodes.length} raw nodes, ${issues.length} valid issues`
   )
+  // Log first node structure if any
+  if (rawNodes.length > 0) {
+    const firstNode = rawNodes[0]
+
+    console.log(
+      `[DEBUG] First node keys: ${Object.keys(firstNode).join(', ') || '(empty object)'}`
+    )
+  }
 
   const issuesWithComments = issues.filter(
     (issue) => issue.comments.totalCount > 0

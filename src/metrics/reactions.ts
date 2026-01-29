@@ -22,6 +22,12 @@ export function extractReactionData(
     (issue) => issue.reactions?.nodes
   )
 
+  // Debug: log reaction sources
+
+  console.log(
+    `[DEBUG] Reaction sources: ${comments.length} comments, ${issues.length} issues`
+  )
+
   let positiveCount = 0
   let negativeCount = 0
   let neutralCount = 0

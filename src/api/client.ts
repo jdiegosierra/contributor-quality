@@ -115,8 +115,8 @@ export class GitHubClient {
       throw new Error(`User not found: ${username}`)
     }
 
-    core.debug(
-      `Issue search returned: ${result.issueSearch?.issueCount ?? 0} issues`
+    core.info(
+      `Issue search returned: ${result.issueSearch?.issueCount ?? 0} issues, ${result.issueSearch?.nodes?.length ?? 0} nodes`
     )
 
     // Handle pagination for PRs if needed
