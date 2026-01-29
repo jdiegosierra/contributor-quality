@@ -37,7 +37,9 @@ describe('Issue Engagement Metric', () => {
             {
               createdAt: new Date().toISOString(),
               comments: { totalCount: 5 },
-              reactions: { nodes: [{ content: '+1' }, { content: 'heart' }] }
+              reactions: {
+                nodes: [{ content: 'THUMBS_UP' }, { content: 'HEART' }]
+              }
             },
             {
               createdAt: new Date().toISOString(),

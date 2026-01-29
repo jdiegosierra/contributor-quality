@@ -30,10 +30,12 @@ describe('Reactions Metrics', () => {
             totalCount: 3,
             nodes: [
               {
-                reactions: { nodes: [{ content: '+1' }, { content: 'heart' }] }
+                reactions: {
+                  nodes: [{ content: 'THUMBS_UP' }, { content: 'HEART' }]
+                }
               },
-              { reactions: { nodes: [{ content: '-1' }] } },
-              { reactions: { nodes: [{ content: 'laugh' }] } }
+              { reactions: { nodes: [{ content: 'THUMBS_DOWN' }] } },
+              { reactions: { nodes: [{ content: 'LAUGH' }] } }
             ],
             pageInfo: { hasNextPage: false, endCursor: null }
           }

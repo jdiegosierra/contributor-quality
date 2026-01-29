@@ -89,13 +89,13 @@ export function logResultSummary(result: AnalysisResult): void {
   core.info('')
 
   core.info(
-    '┌──────────────────────────────────────────────────────────────────────────────────────┐'
+    '┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐'
   )
   core.info(
-    '│ Metric               │ Value          │ Threshold      │ Status  │ Details          │'
+    '│ Metric               │ Value          │ Threshold      │ Status  │ Details                                             │'
   )
   core.info(
-    '├──────────────────────────────────────────────────────────────────────────────────────┤'
+    '├─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤'
   )
 
   for (const metric of result.metrics) {
@@ -103,12 +103,12 @@ export function logResultSummary(result: AnalysisResult): void {
     const value = formatValueForLog(metric).padEnd(14)
     const threshold = formatThresholdForLog(metric).padEnd(14)
     const status = metric.passed ? '✓ Pass ' : '✗ Fail '
-    const details = (metric.details || '-').substring(0, 16).padEnd(16)
+    const details = (metric.details || '-').substring(0, 50).padEnd(50)
     core.info(`│ ${name} │ ${value} │ ${threshold} │ ${status} │ ${details} │`)
   }
 
   core.info(
-    '└──────────────────────────────────────────────────────────────────────────────────────┘'
+    '└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘'
   )
 
   if (result.failedMetrics.length > 0) {

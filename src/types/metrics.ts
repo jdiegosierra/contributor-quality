@@ -80,27 +80,27 @@ export interface RepoQualityData {
   highestStarRepo: number
 }
 
-/** Reaction type classification */
+/** Reaction type classification (GraphQL enum values) */
 export type ReactionType =
-  | '+1'
-  | '-1'
-  | 'laugh'
-  | 'confused'
-  | 'heart'
-  | 'hooray'
-  | 'rocket'
-  | 'eyes'
+  | 'THUMBS_UP'
+  | 'THUMBS_DOWN'
+  | 'LAUGH'
+  | 'CONFUSED'
+  | 'HEART'
+  | 'HOORAY'
+  | 'ROCKET'
+  | 'EYES'
 
 /** Positive reaction types */
 export const POSITIVE_REACTIONS: ReactionType[] = [
-  '+1',
-  'heart',
-  'rocket',
-  'hooray'
+  'THUMBS_UP',
+  'HEART',
+  'ROCKET',
+  'HOORAY'
 ]
 
 /** Negative reaction types */
-export const NEGATIVE_REACTIONS: ReactionType[] = ['-1', 'confused']
+export const NEGATIVE_REACTIONS: ReactionType[] = ['THUMBS_DOWN', 'CONFUSED']
 
 /** Reaction analysis data */
 export interface ReactionData {

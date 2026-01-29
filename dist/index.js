@@ -35959,13 +35959,13 @@ function checkRepoQuality(data, threshold, minimumStars) {
  */
 /** Positive reaction types */
 const POSITIVE_REACTIONS = [
-    '+1',
-    'heart',
-    'rocket',
-    'hooray'
+    'THUMBS_UP',
+    'HEART',
+    'ROCKET',
+    'HOORAY'
 ];
 /** Negative reaction types */
-const NEGATIVE_REACTIONS = ['-1', 'confused'];
+const NEGATIVE_REACTIONS = ['THUMBS_DOWN', 'CONFUSED'];
 
 /**
  * Reactions metric calculator
@@ -36633,18 +36633,18 @@ function logResultSummary(result) {
     coreExports.info(`  Status:    ${result.passed ? '✓ PASSED' : '✗ NEEDS REVIEW'} (${result.passedCount}/${result.totalMetrics} metrics)`);
     coreExports.info(`  Period:    ${result.dataWindowStart.toISOString().split('T')[0]} to ${result.dataWindowEnd.toISOString().split('T')[0]}`);
     coreExports.info('');
-    coreExports.info('┌──────────────────────────────────────────────────────────────────────────────────────┐');
-    coreExports.info('│ Metric               │ Value          │ Threshold      │ Status  │ Details          │');
-    coreExports.info('├──────────────────────────────────────────────────────────────────────────────────────┤');
+    coreExports.info('┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐');
+    coreExports.info('│ Metric               │ Value          │ Threshold      │ Status  │ Details                                             │');
+    coreExports.info('├─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤');
     for (const metric of result.metrics) {
         const name = metric.name.padEnd(20);
         const value = formatValueForLog(metric).padEnd(14);
         const threshold = formatThresholdForLog(metric).padEnd(14);
         const status = metric.passed ? '✓ Pass ' : '✗ Fail ';
-        const details = (metric.details || '-').substring(0, 16).padEnd(16);
+        const details = (metric.details || '-').substring(0, 50).padEnd(50);
         coreExports.info(`│ ${name} │ ${value} │ ${threshold} │ ${status} │ ${details} │`);
     }
-    coreExports.info('└──────────────────────────────────────────────────────────────────────────────────────┘');
+    coreExports.info('└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘');
     if (result.failedMetrics.length > 0) {
         coreExports.info('');
         coreExports.info(`Failed metrics: ${result.failedMetrics.join(', ')}`);

@@ -118,7 +118,10 @@ export const qualityContributorResponse: GraphQLContributorData = {
           Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000
         ).toISOString(),
         reactions: {
-          nodes: [{ content: '+1' as const }, { content: 'heart' as const }]
+          nodes: [
+            { content: 'THUMBS_UP' as const },
+            { content: 'HEART' as const }
+          ]
         }
       })),
       pageInfo: { hasNextPage: false, endCursor: null }
@@ -134,10 +137,10 @@ export const qualityContributorResponse: GraphQLContributorData = {
         comments: { totalCount: 5 },
         reactions: {
           nodes: [
-            { content: '+1' as const },
-            { content: 'heart' as const },
-            { content: '+1' as const },
-            { content: 'rocket' as const }
+            { content: 'THUMBS_UP' as const },
+            { content: 'HEART' as const },
+            { content: 'THUMBS_UP' as const },
+            { content: 'ROCKET' as const }
           ]
         }
       },
@@ -147,7 +150,10 @@ export const qualityContributorResponse: GraphQLContributorData = {
         ).toISOString(),
         comments: { totalCount: 3 },
         reactions: {
-          nodes: [{ content: '+1' as const }, { content: 'heart' as const }]
+          nodes: [
+            { content: 'THUMBS_UP' as const },
+            { content: 'HEART' as const }
+          ]
         }
       }
     ]
@@ -206,7 +212,10 @@ export const spamContributorResponse: GraphQLContributorData = {
       nodes: Array.from({ length: 5 }, () => ({
         createdAt: new Date().toISOString(),
         reactions: {
-          nodes: [{ content: '-1' as const }, { content: 'confused' as const }]
+          nodes: [
+            { content: 'THUMBS_DOWN' as const },
+            { content: 'CONFUSED' as const }
+          ]
         }
       })),
       pageInfo: { hasNextPage: false, endCursor: null }

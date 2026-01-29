@@ -68,8 +68,8 @@ describe('Evaluation Engine', () => {
           issueComments: {
             totalCount: 5,
             nodes: [
-              { reactions: { nodes: [{ content: '+1' }] } },
-              { reactions: { nodes: [{ content: 'heart' }] } }
+              { reactions: { nodes: [{ content: 'THUMBS_UP' }] } },
+              { reactions: { nodes: [{ content: 'HEART' }] } }
             ],
             pageInfo: { hasNextPage: false, endCursor: null }
           }
@@ -82,9 +82,9 @@ describe('Evaluation Engine', () => {
               comments: { totalCount: 3 },
               reactions: {
                 nodes: [
-                  { content: '+1' },
-                  { content: 'heart' },
-                  { content: '+1' }
+                  { content: 'THUMBS_UP' },
+                  { content: 'HEART' },
+                  { content: 'THUMBS_UP' }
                 ]
               }
             }
